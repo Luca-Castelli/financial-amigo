@@ -1,39 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams?.get("callbackUrl") || "/dashboard";
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    try {
-      const result = await signIn("email", {
-        email,
-        callbackUrl,
-        redirect: false,
-      });
-
-      if (!result?.error) {
-        router.push("/verify-request");
-      }
-    } catch (error) {
-      console.error("Sign in error:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleGoogleSignIn = () => {
     signIn("google", { callbackUrl });
@@ -44,51 +18,17 @@ export default function LoginPage() {
       <Card className="w-full max-w-md space-y-8 p-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-bold tracking-tight">
-            Welcome back
+            Welcome to FinancialAmigo
           </h2>
-        </div>
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium">
-              Email address
-            </label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1"
-              placeholder="Enter your email"
-              disabled={isLoading}
-            />
-          </div>
-
-          <div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Sending magic link..." : "Send magic link"}
-            </Button>
-          </div>
-        </form>
-
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="bg-background px-2 text-muted-foreground">
-              Or continue with
-            </span>
-          </div>
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            Sign in with your Google account to continue
+          </p>
         </div>
 
         <Button
           onClick={handleGoogleSignIn}
           variant="outline"
           className="w-full"
-          disabled={isLoading}
         >
           <svg
             className="mr-2 h-4 w-4"
@@ -107,13 +47,6 @@ export default function LoginPage() {
           </svg>
           Continue with Google
         </Button>
-
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          Don't have an account?{" "}
-          <a href="/register" className="font-medium hover:underline">
-            Register here
-          </a>
-        </p>
       </Card>
     </div>
   );

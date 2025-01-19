@@ -88,10 +88,10 @@ FinancialAmigo is a modern investment portfolio tracking application designed to
 
 ### Authentication
 
-- Google OAuth integration
-- Email/password authentication
-- Session management with NextAuth
-- No email verification for MVP
+- Google OAuth integration only (simplified for MVP)
+- Session management with NextAuth.js
+- JWT-based authentication between frontend and backend
+- User data synchronized between NextAuth.js and backend database
 
 ### Data Management
 
@@ -140,9 +140,9 @@ FinancialAmigo is a modern investment portfolio tracking application designed to
 ### Phase 1: Core Infrastructure
 
 1. Set up Next.js frontend project ✅
-2. Initialize FastAPI backend
-3. Configure NextAuth authentication
-4. Set up PostgreSQL database
+2. Initialize FastAPI backend ✅
+3. Configure Google OAuth authentication with NextAuth.js ✅
+4. Set up PostgreSQL database ✅
 5. Implement basic API structure
 
 ### Phase 2: Data Layer
@@ -180,11 +180,14 @@ FinancialAmigo is a modern investment portfolio tracking application designed to
 ## Database Schema
 
 ```sql
--- Users (managed by NextAuth)
+-- Users
 CREATE TABLE users (
-    id VARCHAR PRIMARY KEY,
+    id UUID PRIMARY KEY,
     email VARCHAR UNIQUE NOT NULL,
-    name VARCHAR,
+    name VARCHAR NOT NULL,
+    image VARCHAR,
+    provider VARCHAR NOT NULL DEFAULT 'google',
+    google_id VARCHAR UNIQUE NOT NULL,
     default_currency VARCHAR(3) NOT NULL DEFAULT 'CAD'
 );
 

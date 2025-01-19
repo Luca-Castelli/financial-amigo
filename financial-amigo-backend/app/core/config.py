@@ -13,9 +13,10 @@ class Settings(BaseSettings):
     DATABASE_URL: Optional[str] = None
 
     # JWT settings
-    SECRET_KEY: str = "your-secret-key-for-jwt"  # Change this in production!
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    JWT_SECRET_KEY: str = (
+        "YEHnzRUTGgm82MXfuzP3lKW7LAJE30LWug1Xod0VNkg="  # Same as NEXTAUTH_SECRET
+    )
+    JWT_ALGORITHM: str = "HS256"
 
     # API Keys
     NEWSAPI_KEY: Optional[str] = None
@@ -28,6 +29,14 @@ class Settings(BaseSettings):
         if self.DATABASE_URL:
             return self.DATABASE_URL
         return f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
+    @property
+    def jwt_secret_key(self) -> str:
+        return self.JWT_SECRET_KEY
+
+    @property
+    def jwt_algorithm(self) -> str:
+        return self.JWT_ALGORITHM
 
 
 settings = Settings()

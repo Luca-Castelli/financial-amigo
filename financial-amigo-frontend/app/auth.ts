@@ -1,17 +1,13 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import EmailProvider from "next-auth/providers/email";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import { PrismaClient } from "@prisma/client";
-import { Resend } from "resend";
-import type { Session, User, Account, Profile } from "next-auth";
+import type { Session, User, Account } from "next-auth";
 import type { JWT } from "next-auth/jwt";
-
-const prisma = new PrismaClient();
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { SignJWT } from "jose";
+import { jwtVerify } from "jose";
 
 declare module "next-auth" {
   interface Session {
+    access_token?: string;
     user: {
       id: string;
       name?: string | null;
@@ -23,76 +19,54 @@ declare module "next-auth" {
 
 declare module "next-auth/jwt" {
   interface JWT {
+    access_token?: string;
     id?: string;
     email?: string | null;
-    accessToken?: string;
-    provider?: string;
   }
 }
 
 export const authOptions = {
-  adapter: PrismaAdapter(prisma),
-  secret: process.env.NEXTAUTH_SECRET,
-  session: {
-    strategy: "database" as const,
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-    updateAge: 24 * 60 * 60, // 24 hours
-  },
-  pages: {
-    signIn: "/login",
-    verifyRequest: "/verify-request",
-    error: "/auth/error",
-  },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
-    EmailProvider({
-      from: process.env.EMAIL_FROM!,
-      sendVerificationRequest: async ({ identifier: email, url }) => {
-        try {
-          const { data, error } = await resend.emails.send({
-            from: process.env.EMAIL_FROM!,
-            to: email,
-            subject: "Sign in to Financial Amigo",
-            html: `
-              <body style="background: #f9f9f9; padding: 20px;">
-                <div style="max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                  <h1 style="color: #333; text-align: center;">Welcome to Financial Amigo</h1>
-                  <p style="color: #666; text-align: center;">Click the button below to sign in:</p>
-                  <div style="text-align: center; margin: 30px 0;">
-                    <a href="${url}" 
-                       style="background: #4F46E5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                      Sign in to Financial Amigo
-                    </a>
-                  </div>
-                  <p style="color: #666; text-align: center; font-size: 14px;">
-                    If you did not request this email, you can safely ignore it.
-                  </p>
-                </div>
-              </body>
-            `,
-          });
-
-          if (error) {
-            console.error("Resend error:", error);
-            throw new Error(error.message);
-          }
-
-          console.log("Email sent successfully:", data);
-        } catch (error) {
-          console.error("Failed to send email:", error);
-          throw new Error(
-            error instanceof Error
-              ? error.message
-              : "Failed to send verification email"
-          );
-        }
-      },
-    }),
   ],
   callbacks: {
+    async signIn({ user, account }: { user: User; account: Account | null }) {
+      if (account?.provider === "google") {
+        try {
+          // Sync user with our backend
+          const response = await fetch(
+            "http://localhost:8000/api/auth/sync-google-user",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                email: user.email,
+                name: user.name,
+                image: user.image,
+                google_id: account.providerAccountId,
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            console.error(
+              "Failed to sync user with backend:",
+              await response.text()
+            );
+            return false;
+          }
+        } catch (error) {
+          console.error("Error syncing user with backend:", error);
+          return false;
+        }
+      }
+      return true;
+    },
     async jwt({
       token,
       user,
@@ -106,64 +80,76 @@ export const authOptions = {
       if (account && user) {
         token.id = user.id;
         token.email = user.email;
-        token.provider = account.provider;
-        if (account.access_token) {
-          token.accessToken = account.access_token;
-        }
       }
+
+      // Generate a new backend token if:
+      // 1. No token exists
+      // 2. No email in token (invalid state)
+      // 3. Token is expired (we don't store expiry as it's handled by the JWT itself)
+      try {
+        if (token.access_token) {
+          // Verify the existing token
+          const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET);
+          try {
+            await jwtVerify(token.access_token, secret);
+            // Token is still valid
+            return token;
+          } catch {
+            // Token is expired or invalid, generate new one below
+          }
+        }
+
+        // Generate new token
+        if (token.email) {
+          const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET);
+          const backendToken = await new SignJWT({ email: token.email })
+            .setProtectedHeader({ alg: "HS256" })
+            .setIssuedAt()
+            .setExpirationTime("24h")
+            .sign(secret);
+
+          token.access_token = backendToken;
+        }
+      } catch (error) {
+        console.error("Error handling JWT token:", error);
+        // Don't throw - let the user continue with a degraded experience
+        // They'll get auth errors when calling the backend
+      }
+
       return token;
     },
-    async session({
-      session,
-      token,
-      user,
-    }: {
-      session: Session;
-      token: JWT;
-      user: User;
-    }) {
+    async session({ session, token }: { session: Session; token: JWT }) {
       // Send properties to the client
+      if (token.access_token) {
+        session.access_token = token.access_token;
+      }
       if (session.user) {
-        session.user.id = user.id;
-        session.user.email = user.email;
+        session.user.id = token.id as string;
+        session.user.email = token.email;
       }
       return session;
     },
     async redirect({ url, baseUrl }: { url: string; baseUrl: string }) {
-      // Handle sign in redirects
-      if (url.startsWith(baseUrl)) {
-        // If on the same origin
-        if (url.includes("/api/auth/callback")) {
-          // After successful authentication
-          return `${baseUrl}/dashboard`;
-        }
-        return url;
-      } else if (url.startsWith("/")) {
-        // Handle relative URLs
+      // After successful authentication, always redirect to dashboard
+      if (url.includes("/api/auth/callback")) {
+        return `${baseUrl}/dashboard`;
+      }
+      // Handle relative URLs
+      if (url.startsWith("/")) {
         return `${baseUrl}${url}`;
+      }
+      // Handle same origin URLs
+      if (url.startsWith(baseUrl)) {
+        return url;
       }
       return baseUrl;
     },
   },
-  events: {
-    async signIn({
-      user,
-      account,
-      profile,
-      isNewUser,
-    }: {
-      user: User;
-      account: Account | null;
-      profile?: Profile;
-      isNewUser?: boolean;
-    }) {
-      console.log("[Auth Debug] SignIn Event:", { user, account, isNewUser });
-    },
-    async session({ session }: { session: Session }) {
-      console.log("[Auth Debug] Session Event:", { session });
-    },
+  pages: {
+    signIn: "/login",
   },
-  debug: true,
+  secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === "development",
 };
 
 const handler = NextAuth(authOptions);

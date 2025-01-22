@@ -9,6 +9,23 @@ class ApiError extends Error {
   }
 }
 
+async function refreshAccessToken(refresh_token: string): Promise<string> {
+  const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ refresh_token }),
+  });
+
+  if (!response.ok) {
+    throw new ApiError(response.status, "Failed to refresh access token");
+  }
+
+  const data = await response.json();
+  return data.access_token;
+}
+
 async function fetchWithAuth(
   endpoint: string,
   options: RequestInit = {}
@@ -18,20 +35,56 @@ async function fetchWithAuth(
     throw new ApiError(401, "Not authenticated");
   }
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers: {
-      ...options.headers,
-      Authorization: `Bearer ${session.access_token}`,
-      "Content-Type": "application/json",
-    },
-  });
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+      },
+    });
 
-  if (!response.ok) {
-    throw new ApiError(response.status, await response.text());
+    // If we get a 401, try to refresh the token
+    if (response.status === 401 && session.refresh_token) {
+      try {
+        // Get new access token
+        const newAccessToken = await refreshAccessToken(session.refresh_token);
+
+        // Update session token (this is temporary until next session update)
+        session.access_token = newAccessToken;
+
+        // Retry the original request with new token
+        const retryResponse = await fetch(`${API_BASE}${endpoint}`, {
+          ...options,
+          headers: {
+            ...options.headers,
+            Authorization: `Bearer ${newAccessToken}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!retryResponse.ok) {
+          throw new ApiError(retryResponse.status, await retryResponse.text());
+        }
+
+        return retryResponse.json();
+      } catch (error) {
+        throw new ApiError(401, "Token refresh failed");
+      }
+    }
+
+    if (!response.ok) {
+      throw new ApiError(response.status, await response.text());
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(500, "Network error");
   }
-
-  return response.json();
 }
 
 export const api = {

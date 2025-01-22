@@ -2,7 +2,7 @@
 
 ## Overview
 
-FinancialAmigo is a modern investment portfolio tracking application designed to help users monitor their investments and net worth across multiple accounts and currencies. The application provides real-time portfolio updates, performance analytics, and relevant financial news.
+FinancialAmigo is a modern investment portfolio tracking application designed to help users monitor their investments across multiple accounts and currencies. The application provides real-time portfolio updates, performance analytics, and relevant financial news.
 
 ## Target Users
 
@@ -54,19 +54,21 @@ FinancialAmigo is a modern investment portfolio tracking application designed to
 
 ### 2. Transaction Management
 
-- Add/edit/delete transactions
+- Add/edit/delete investment transactions
 - Support for:
   - Buy orders
   - Sell orders
   - Dividend payments
-  - Contributions
-  - Withdrawals
+  - Cash contributions
+  - Cash withdrawals
+  - Interest earned
+  - Account fees
 - Transaction history view
 - Transaction categorization
 
 ### 3. Account Management
 
-- Multiple account support
+- Multiple investment account support
 - Account types:
   - TFSA
   - RRSP
@@ -88,9 +90,12 @@ FinancialAmigo is a modern investment portfolio tracking application designed to
 
 ### Authentication
 
-- Google OAuth integration only (simplified for MVP)
+- Google OAuth integration only
 - Session management with NextAuth.js
 - JWT-based authentication between frontend and backend
+  - Backend generates JWT tokens upon successful Google auth
+  - Frontend stores tokens securely
+  - Automatic token refresh handling
 - User data synchronized between NextAuth.js and backend database
 
 ### Data Management
@@ -143,11 +148,11 @@ FinancialAmigo is a modern investment portfolio tracking application designed to
 2. Initialize FastAPI backend ✅
 3. Configure Google OAuth authentication with NextAuth.js ✅
 4. Set up PostgreSQL database ✅
-5. Implement basic API structure
+5. Implement basic API structure ✅
 
 ### Phase 2: Data Layer
 
-1. Implement database models
+1. Implement database models ✅
 2. Set up Yahoo Finance integration
 3. Configure NewsAPI integration
 4. Implement caching system
@@ -188,118 +193,165 @@ CREATE TABLE users (
     image VARCHAR,
     provider VARCHAR NOT NULL DEFAULT 'google',
     google_id VARCHAR UNIQUE NOT NULL,
-    default_currency VARCHAR(3) NOT NULL DEFAULT 'CAD'
+    default_currency VARCHAR(3) NOT NULL DEFAULT 'CAD',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Account Categories
 CREATE TABLE account_categories (
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR NOT NULL,
-    type VARCHAR NOT NULL  -- INVESTMENT, BANKING, CREDIT, REAL_ESTATE, LIABILITY
+    type VARCHAR NOT NULL,  -- INVESTMENT only for MVP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Accounts
 CREATE TABLE accounts (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR REFERENCES users(id),
-    category_id INTEGER REFERENCES account_categories(id),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id),
+    category_id UUID REFERENCES account_categories(id),
     name VARCHAR NOT NULL,
-    type VARCHAR NOT NULL,      -- TFSA, RRSP, FHSA, MARGIN, CASH, CHQ, SAV, etc.
-    tax_type VARCHAR NOT NULL,  -- REGISTERED, NON_REGISTERED, NA
+    type VARCHAR NOT NULL,      -- TFSA, RRSP, FHSA, MARGIN, CASH
+    tax_type VARCHAR NOT NULL,  -- REGISTERED, NON_REGISTERED
     currency VARCHAR(3) NOT NULL,
     broker VARCHAR,
-    created_at TIMESTAMP DEFAULT NOW()
+    cash_balance DECIMAL(20,6) NOT NULL DEFAULT 0,
+    cash_interest_ytd DECIMAL(20,6) NOT NULL DEFAULT 0,
+    cash_last_updated TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Securities metadata
 CREATE TABLE securities (
     symbol VARCHAR PRIMARY KEY,
     name VARCHAR NOT NULL,
-    asset_type VARCHAR NOT NULL,    -- EQUITY, FIXED_INCOME, CASH, REAL_ESTATE
+    asset_type VARCHAR NOT NULL,    -- EQUITY, FIXED_INCOME, CASH
     asset_subtype VARCHAR,          -- For equities: LARGE_CAP, MID_CAP, etc.
     sector VARCHAR,                 -- Technology, Healthcare, etc.
+    industry VARCHAR,
     exchange VARCHAR NOT NULL,
-    currency VARCHAR(3) NOT NULL    -- Trading currency
+    currency VARCHAR(3) NOT NULL,   -- Trading currency
+    last_price DECIMAL(20,6),
+    last_price_updated TIMESTAMP WITH TIME ZONE,
+    market_cap DECIMAL(20,2),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Holdings
 CREATE TABLE holdings (
-    id SERIAL PRIMARY KEY,
-    account_id INTEGER REFERENCES accounts(id),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    account_id UUID REFERENCES accounts(id),
     symbol VARCHAR REFERENCES securities(symbol),
-    quantity DECIMAL NOT NULL,
-    avg_cost_native DECIMAL NOT NULL,  -- In security's currency
+    quantity DECIMAL(20,6) NOT NULL,
+    avg_cost_native DECIMAL(20,6) NOT NULL,  -- In security's currency
+    market_value_native DECIMAL(20,6),       -- In security's currency
+    unrealized_pl_native DECIMAL(20,6),      -- In security's currency
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE (account_id, symbol)
 );
 
--- Transactions
+-- Investment Transactions
 CREATE TABLE transactions (
-    id SERIAL PRIMARY KEY,
-    account_id INTEGER REFERENCES accounts(id),
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    account_id UUID REFERENCES accounts(id),
     symbol VARCHAR REFERENCES securities(symbol),
-    type VARCHAR NOT NULL,          -- BUY, SELL, DIVIDEND, CONTRIBUTION, WITHDRAWAL
-    quantity DECIMAL,
-    price_native DECIMAL NOT NULL,  -- In security's currency
-    total_native DECIMAL NOT NULL,  -- In security's currency
-    total_account DECIMAL NOT NULL, -- In account's currency
-    fx_rate DECIMAL NOT NULL,       -- Rate between security and account currency
-    fees_native DECIMAL DEFAULT 0,
-    date TIMESTAMP NOT NULL
+    type VARCHAR NOT NULL,          -- BUY, SELL, DIVIDEND
+    trade_date TIMESTAMP WITH TIME ZONE NOT NULL,
+    settlement_date TIMESTAMP WITH TIME ZONE,
+    quantity DECIMAL(20,6),         -- Null for cash transactions, negative for sells
+    price_native DECIMAL(20,6),     -- In security's currency
+    total_native DECIMAL(20,6),     -- In security's currency
+    total_account DECIMAL(20,6),    -- In account's currency
+    fx_rate DECIMAL(20,6) NOT NULL, -- Rate between security and account currency
+    fees_native DECIMAL(20,6) DEFAULT 0,
+    status VARCHAR NOT NULL DEFAULT 'PENDING', -- PENDING, SETTLED, CANCELLED
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Cash Transactions
+CREATE TABLE cash_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    account_id UUID REFERENCES accounts(id),
+    type VARCHAR NOT NULL,          -- CONTRIBUTION, WITHDRAWAL, INTEREST, FEE, DIVIDEND, TRADE
+    date TIMESTAMP WITH TIME ZONE NOT NULL,
+    amount DECIMAL(20,6) NOT NULL,  -- Positive for inflow, negative for outflow
+    description VARCHAR,
+    security_id UUID REFERENCES securities(id),           -- For dividends
+    related_transaction_id UUID REFERENCES transactions(id), -- For trades
+    related_cash_transaction_id UUID REFERENCES cash_transactions(id), -- For transfers
+    source_currency VARCHAR(3),     -- For transfers/FX
+    target_currency VARCHAR(3),     -- For transfers/FX
+    fx_rate DECIMAL(20,6),         -- For transfers/FX
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Historical Prices
+CREATE TABLE historical_prices (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    symbol VARCHAR NOT NULL REFERENCES securities(symbol),
+    date DATE NOT NULL,
+    open DECIMAL(20,6) NOT NULL,
+    high DECIMAL(20,6) NOT NULL,
+    low DECIMAL(20,6) NOT NULL,
+    close DECIMAL(20,6) NOT NULL,
+    volume BIGINT NOT NULL,
+    adjusted_close DECIMAL(20,6) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (symbol, date)
+);
+
+-- Historical FX Rates
+CREATE TABLE historical_fx_rates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    from_currency VARCHAR(3) NOT NULL,
+    to_currency VARCHAR(3) NOT NULL,
+    date DATE NOT NULL,
+    rate DECIMAL(20,6) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (from_currency, to_currency, date)
 );
 
 -- Benchmarks
 CREATE TABLE benchmarks (
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     symbol VARCHAR NOT NULL,
     name VARCHAR NOT NULL,
-    currency VARCHAR(3) NOT NULL
+    currency VARCHAR(3) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Benchmark Values
+CREATE TABLE benchmark_values (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    benchmark_id UUID REFERENCES benchmarks(id),
+    date DATE NOT NULL,
+    value DECIMAL(20,6) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (benchmark_id, date)
 );
 
 -- Portfolio Benchmarks
 CREATE TABLE portfolio_benchmarks (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR REFERENCES users(id),
-    benchmark_id INTEGER REFERENCES benchmarks(id),
-    weight DECIMAL NOT NULL,
-    start_date DATE NOT NULL
-);
-
--- Historical Prices (includes both securities and benchmarks)
-CREATE TABLE historical_prices (
-    symbol VARCHAR NOT NULL,
-    date DATE NOT NULL,
-    close_price DECIMAL NOT NULL,
-    currency VARCHAR(3) NOT NULL,
-    PRIMARY KEY (symbol, date)
-);
-
--- FX Rates
-CREATE TABLE historical_fx_rates (
-    from_currency VARCHAR(3) NOT NULL,
-    to_currency VARCHAR(3) NOT NULL,
-    date DATE NOT NULL,
-    rate DECIMAL NOT NULL,
-    PRIMARY KEY (from_currency, to_currency, date)
-);
-
--- Assets (for net worth tracking)
-CREATE TABLE assets (
-    id SERIAL PRIMARY KEY,
-    user_id VARCHAR REFERENCES users(id),
-    type VARCHAR NOT NULL,      -- REAL_ESTATE, VEHICLE, etc.
-    name VARCHAR NOT NULL,
-    currency VARCHAR(3) NOT NULL,
-    current_value DECIMAL NOT NULL,
-    acquisition_date DATE,
-    acquisition_price DECIMAL
-);
-
--- Asset Valuations
-CREATE TABLE asset_valuations (
-    id SERIAL PRIMARY KEY,
-    asset_id INTEGER REFERENCES assets(id),
-    date DATE NOT NULL,
-    value DECIMAL NOT NULL
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id),
+    benchmark_id UUID REFERENCES benchmarks(id),
+    weight DECIMAL(5,2) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ```
 
@@ -335,30 +387,41 @@ CREATE TABLE asset_valuations (
 - Version control
 - Code review process
 
-## Future Enhancements
+## Future Enhancements (Post-MVP)
 
-1. Email notifications for:
+1. Additional Account Types:
+
+   - Banking accounts (checking, savings)
+   - Credit cards
+   - Real estate properties
+   - Other liabilities (mortgages, loans)
+
+2. Enhanced Features for New Account Types:
+
+   - Bill payment tracking
+   - Credit card rewards
+   - Property value tracking
+   - Mortgage amortization
+   - Net worth calculation including all assets/liabilities
+
+3. Email notifications for:
 
    - Price alerts
    - Dividend payments
    - Account activities
 
-2. Advanced Analytics:
+4. Advanced Analytics:
 
    - Tax loss harvesting
    - Portfolio rebalancing
    - Risk analysis
    - Correlation analysis
 
-3. Additional Features:
-
+5. Additional Features:
    - Mobile app
    - Export functionality
-   - Benchmark comparisons
    - Custom watchlists
-
-4. Integration:
-   - More brokers
+   - More broker integrations
    - Additional data providers
    - Social sharing
    - Market news

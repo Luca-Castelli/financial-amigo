@@ -2,12 +2,11 @@ import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import type { Session, User, Account } from "next-auth";
 import type { JWT } from "next-auth/jwt";
-import { SignJWT } from "jose";
-import { jwtVerify } from "jose";
 
 declare module "next-auth" {
   interface Session {
     access_token?: string;
+    refresh_token?: string;
     user: {
       id: string;
       name?: string | null;
@@ -20,6 +19,7 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     access_token?: string;
+    refresh_token?: string;
     id?: string;
     email?: string | null;
   }
@@ -36,7 +36,7 @@ export const authOptions = {
     async signIn({ user, account }: { user: User; account: Account | null }) {
       if (account?.provider === "google") {
         try {
-          // Sync user with our backend
+          // Sync user with our backend and get JWT tokens
           const response = await fetch(
             "http://localhost:8000/api/auth/sync-google-user",
             {
@@ -60,6 +60,15 @@ export const authOptions = {
             );
             return false;
           }
+
+          const data = await response.json();
+
+          // Store both tokens and user ID
+          if (data.access_token && data.refresh_token) {
+            account.access_token = data.access_token;
+            account.refresh_token = data.refresh_token;
+            user.id = data.user.id;
+          }
         } catch (error) {
           console.error("Error syncing user with backend:", error);
           return false;
@@ -80,48 +89,23 @@ export const authOptions = {
       if (account && user) {
         token.id = user.id;
         token.email = user.email;
-      }
-
-      // Generate a new backend token if:
-      // 1. No token exists
-      // 2. No email in token (invalid state)
-      // 3. Token is expired (we don't store expiry as it's handled by the JWT itself)
-      try {
-        if (token.access_token) {
-          // Verify the existing token
-          const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET);
-          try {
-            await jwtVerify(token.access_token, secret);
-            // Token is still valid
-            return token;
-          } catch {
-            // Token is expired or invalid, generate new one below
-          }
+        // Store both tokens
+        if (account.access_token) {
+          token.access_token = account.access_token;
         }
-
-        // Generate new token
-        if (token.email) {
-          const secret = new TextEncoder().encode(process.env.NEXTAUTH_SECRET);
-          const backendToken = await new SignJWT({ email: token.email })
-            .setProtectedHeader({ alg: "HS256" })
-            .setIssuedAt()
-            .setExpirationTime("24h")
-            .sign(secret);
-
-          token.access_token = backendToken;
+        if (account.refresh_token) {
+          token.refresh_token = account.refresh_token;
         }
-      } catch (error) {
-        console.error("Error handling JWT token:", error);
-        // Don't throw - let the user continue with a degraded experience
-        // They'll get auth errors when calling the backend
       }
-
       return token;
     },
     async session({ session, token }: { session: Session; token: JWT }) {
       // Send properties to the client
       if (token.access_token) {
         session.access_token = token.access_token;
+      }
+      if (token.refresh_token) {
+        session.refresh_token = token.refresh_token;
       }
       if (session.user) {
         session.user.id = token.id as string;

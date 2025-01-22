@@ -69,10 +69,10 @@ class CashTransaction(Base):
     )
 
     # Audit fields
-    created_at = Column(DateTime, nullable=False, default=datetime.now(datetime.UTC))
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.now(datetime.UTC),
-        onupdate=datetime.now(datetime.UTC),
+        default=datetime.utcnow(),
+        onupdate=datetime.utcnow(),
     )

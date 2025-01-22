@@ -23,14 +23,14 @@ class User(Base):
     google_id = Column(String, unique=True, nullable=False)
     default_currency = Column(String, nullable=False, default="CAD")
 
-    # Relationships
+    # Relationships - use string reference to avoid circular imports
     accounts = relationship("Account", back_populates="user")
 
     # Audit fields
-    created_at = Column(DateTime, nullable=False, default=datetime.now(datetime.UTC))
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.now(datetime.UTC),
-        onupdate=datetime.now(datetime.UTC),
+        default=datetime.utcnow(),
+        onupdate=datetime.utcnow(),
     )

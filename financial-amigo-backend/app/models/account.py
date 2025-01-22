@@ -48,7 +48,7 @@ class Account(Base):
         Numeric(20, 6), nullable=False, default=0
     )  # YTD interest earned
     cash_last_updated = Column(
-        DateTime, nullable=False, default=datetime.now(datetime.UTC)
+        DateTime, nullable=False, default=datetime.utcnow()
     )  # Last balance update
 
     # Relationships
@@ -60,10 +60,10 @@ class Account(Base):
     portfolio_benchmarks = relationship("PortfolioBenchmark", back_populates="account")
 
     # Audit fields
-    created_at = Column(DateTime, nullable=False, default=datetime.now(datetime.UTC))
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.now(datetime.UTC),
-        onupdate=datetime.now(datetime.UTC),
+        default=datetime.utcnow(),
+        onupdate=datetime.utcnow(),
     )

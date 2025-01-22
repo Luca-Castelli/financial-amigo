@@ -42,10 +42,10 @@ class HistoricalBalance(Base):
     __table_args__ = (UniqueConstraint("account_id", "date", name="uix_account_date"),)
 
     # Audit fields
-    created_at = Column(DateTime, nullable=False, default=datetime.now(datetime.UTC))
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
     updated_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.now(datetime.UTC),
-        onupdate=datetime.now(datetime.UTC),
+        default=datetime.utcnow(),
+        onupdate=datetime.utcnow(),
     )

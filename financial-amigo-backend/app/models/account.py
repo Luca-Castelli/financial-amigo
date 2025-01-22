@@ -51,13 +51,38 @@ class Account(Base):
         DateTime, nullable=False, default=datetime.utcnow()
     )  # Last balance update
 
-    # Relationships
+    # Relationships with cascade delete
     user = relationship("User", back_populates="accounts")
-    holdings = relationship("Holding", back_populates="account")
-    transactions = relationship("Transaction", back_populates="account")
-    cash_transactions = relationship("CashTransaction", back_populates="account")
-    historical_balances = relationship("HistoricalBalance", back_populates="account")
-    portfolio_benchmarks = relationship("PortfolioBenchmark", back_populates="account")
+    holdings = relationship(
+        "Holding",
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    transactions = relationship(
+        "Transaction",
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    cash_transactions = relationship(
+        "CashTransaction",
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    historical_balances = relationship(
+        "HistoricalBalance",
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    portfolio_benchmarks = relationship(
+        "PortfolioBenchmark",
+        back_populates="account",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     # Audit fields
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow())

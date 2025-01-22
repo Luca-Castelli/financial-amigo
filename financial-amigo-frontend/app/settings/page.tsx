@@ -37,40 +37,48 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSession } from "next-auth/react";
-import { api } from "@/lib/api";
+import { api, Account, AccountType, CreateAccountData } from "@/lib/api";
 import toast from "react-hot-toast";
-
-// Mock data for user accounts
-const initialAccounts = [
-  { id: 1, name: "CAD TFSA", currency: "CAD", type: "TFSA" },
-  { id: 2, name: "USD RRSP", currency: "USD", type: "RRSP" },
-];
 
 export default function Settings() {
   const { data: session } = useSession();
-  const [accounts, setAccounts] = useState(initialAccounts);
-  const [newAccount, setNewAccount] = useState({
-    name: "",
-    currency: "",
-    type: "",
-  });
-  const [isAddingAccount, setIsAddingAccount] = useState(false);
-  const [defaultCurrency, setDefaultCurrency] = useState<string>("");
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [defaultCurrency, setDefaultCurrency] = useState<string>("");
 
+  // Account management state
+  const [isAddingAccount, setIsAddingAccount] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [isEditingAccount, setIsEditingAccount] = useState(false);
+  const [isViewingAccount, setIsViewingAccount] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [newAccount, setNewAccount] = useState<CreateAccountData>({
+    name: "",
+    type: "NON_REGISTERED",
+    currency: "CAD",
+    description: "",
+    broker: "",
+    account_number: "",
+  });
+
+  // Fetch user settings and accounts
   useEffect(() => {
-    // Fetch user settings when component mounts
-    const fetchUserSettings = async () => {
+    const fetchData = async () => {
       try {
-        const user = await api.getCurrentUser();
+        const [user, accountsData] = await Promise.all([
+          api.getCurrentUser(),
+          api.getAccounts(),
+        ]);
         setDefaultCurrency(user.default_currency);
+        setAccounts(accountsData);
       } catch (error) {
-        console.error("Failed to fetch user settings:", error);
-        toast.error("Failed to load user settings");
+        console.error("Failed to fetch data:", error);
+        toast.error("Failed to load settings");
       }
     };
 
-    fetchUserSettings();
+    fetchData();
   }, []);
 
   const handleCurrencyChange = async (value: string) => {
@@ -87,30 +95,87 @@ export default function Settings() {
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setNewAccount((prev) => ({ ...prev, [name]: value }));
+  const handleCreateAccount = async () => {
+    if (!newAccount.name) {
+      toast.error("Account name is required");
+      return;
+    }
+
+    try {
+      const account = await api.createAccount(newAccount);
+      setAccounts((prev) => [...prev, account]);
+      setIsAddingAccount(false);
+      setNewAccount({
+        name: "",
+        type: "NON_REGISTERED",
+        currency: "CAD",
+        description: "",
+        broker: "",
+        account_number: "",
+      });
+      toast.success("Account created successfully");
+    } catch (error) {
+      console.error("Failed to create account:", error);
+      toast.error("Failed to create account");
+    }
   };
 
-  const handleAddAccount = () => {
-    const account = {
-      id: accounts.length + 1,
-      ...newAccount,
-    };
-    setAccounts((prev) => [...prev, account]);
-    setNewAccount({ name: "", currency: "", type: "" });
-    setIsAddingAccount(false);
+  const handleUpdateAccount = async () => {
+    if (!selectedAccount) return;
+    if (!newAccount.name) {
+      toast.error("Account name is required");
+      return;
+    }
+
+    try {
+      const updated = await api.updateAccount(selectedAccount.id, {
+        name: newAccount.name,
+        description: newAccount.description,
+        broker: newAccount.broker,
+        account_number: newAccount.account_number,
+      });
+      setAccounts((prev) =>
+        prev.map((acc) => (acc.id === updated.id ? updated : acc))
+      );
+      setIsViewingAccount(false);
+      setSelectedAccount(updated);
+      toast.success("Account updated successfully");
+    } catch (error) {
+      console.error("Failed to update account:", error);
+      toast.error("Failed to update account");
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!selectedAccount) return;
+    if (deleteConfirmation !== selectedAccount.name) {
+      toast.error("Please type the account name correctly to confirm deletion");
+      return;
+    }
+
+    try {
+      await api.deleteAccount(selectedAccount.id);
+      setAccounts((prev) =>
+        prev.filter((acc) => acc.id !== selectedAccount.id)
+      );
+      setIsDeletingAccount(false);
+      setSelectedAccount(null);
+      setDeleteConfirmation("");
+      toast.success("Account deleted successfully");
+    } catch (error) {
+      console.error("Failed to delete account:", error);
+      toast.error("Failed to delete account");
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-background">
       <Header />
       <main className="py-10">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold leading-tight text-gray-900">
-            Settings
-          </h1>
+          <h1 className="text-3xl font-bold leading-tight">Settings</h1>
           <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
+            {/* User Profile Card */}
             <Card>
               <CardHeader>
                 <CardTitle>User Profile</CardTitle>
@@ -156,6 +221,8 @@ export default function Settings() {
                 </form>
               </CardContent>
             </Card>
+
+            {/* Accounts Card */}
             <Card>
               <CardHeader>
                 <div className="flex justify-between items-center">
@@ -176,8 +243,7 @@ export default function Settings() {
                       <DialogHeader>
                         <DialogTitle>Add New Account</DialogTitle>
                         <DialogDescription>
-                          Enter the details of your new account here. Click save
-                          when you're done.
+                          Enter the details of your new investment account.
                         </DialogDescription>
                       </DialogHeader>
                       <div className="grid gap-4 py-4">
@@ -187,39 +253,125 @@ export default function Settings() {
                           </Label>
                           <Input
                             id="name"
-                            name="name"
                             value={newAccount.name}
-                            onChange={handleInputChange}
+                            onChange={(e) =>
+                              setNewAccount({
+                                ...newAccount,
+                                name: e.target.value,
+                              })
+                            }
                             className="col-span-3"
                           />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
-                          <Label htmlFor="currency" className="text-right">
-                            Currency
+                          <Label htmlFor="description" className="text-right">
+                            Description
                           </Label>
                           <Input
-                            id="currency"
-                            name="currency"
-                            value={newAccount.currency}
-                            onChange={handleInputChange}
+                            id="description"
+                            value={newAccount.description}
+                            onChange={(e) =>
+                              setNewAccount({
+                                ...newAccount,
+                                description: e.target.value,
+                              })
+                            }
                             className="col-span-3"
+                            placeholder="Optional"
                           />
                         </div>
                         <div className="grid grid-cols-4 items-center gap-4">
                           <Label htmlFor="type" className="text-right">
                             Type
                           </Label>
-                          <Input
-                            id="type"
-                            name="type"
+                          <Select
                             value={newAccount.type}
-                            onChange={handleInputChange}
+                            onValueChange={(value: AccountType) =>
+                              setNewAccount({ ...newAccount, type: value })
+                            }
+                          >
+                            <SelectTrigger className="col-span-3">
+                              <SelectValue placeholder="Select account type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="TFSA">TFSA</SelectItem>
+                              <SelectItem value="RRSP">RRSP</SelectItem>
+                              <SelectItem value="FHSA">FHSA</SelectItem>
+                              <SelectItem value="NON_REGISTERED">
+                                Non-Registered
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="currency" className="text-right">
+                            Currency
+                          </Label>
+                          <Select
+                            value={newAccount.currency}
+                            onValueChange={(value) =>
+                              setNewAccount({ ...newAccount, currency: value })
+                            }
+                          >
+                            <SelectTrigger className="col-span-3">
+                              <SelectValue placeholder="Select currency" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="CAD">
+                                Canadian Dollar (CAD)
+                              </SelectItem>
+                              <SelectItem value="USD">
+                                US Dollar (USD)
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label htmlFor="broker" className="text-right">
+                            Broker
+                          </Label>
+                          <Input
+                            id="broker"
+                            value={newAccount.broker}
+                            onChange={(e) =>
+                              setNewAccount({
+                                ...newAccount,
+                                broker: e.target.value,
+                              })
+                            }
                             className="col-span-3"
+                            placeholder="Optional"
+                          />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                          <Label
+                            htmlFor="account_number"
+                            className="text-right"
+                          >
+                            Account #
+                          </Label>
+                          <Input
+                            id="account_number"
+                            value={newAccount.account_number}
+                            onChange={(e) =>
+                              setNewAccount({
+                                ...newAccount,
+                                account_number: e.target.value,
+                              })
+                            }
+                            className="col-span-3"
+                            placeholder="Optional"
                           />
                         </div>
                       </div>
                       <DialogFooter>
-                        <Button onClick={handleAddAccount}>Save Account</Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsAddingAccount(false)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button onClick={handleCreateAccount}>Create</Button>
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
@@ -230,16 +382,29 @@ export default function Settings() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
-                      <TableHead>Currency</TableHead>
+                      <TableHead>Broker</TableHead>
                       <TableHead>Type</TableHead>
+                      <TableHead>Currency</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {accounts.map((account) => (
-                      <TableRow key={account.id}>
+                      <TableRow
+                        key={account.id}
+                        className="cursor-pointer hover:bg-muted/50"
+                        onClick={() => {
+                          setSelectedAccount(account);
+                          setNewAccount({
+                            ...account,
+                            type: account.type,
+                          });
+                          setIsViewingAccount(true);
+                        }}
+                      >
                         <TableCell>{account.name}</TableCell>
-                        <TableCell>{account.currency}</TableCell>
+                        <TableCell>{account.broker || "-"}</TableCell>
                         <TableCell>{account.type}</TableCell>
+                        <TableCell>{account.currency}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -249,6 +414,154 @@ export default function Settings() {
           </div>
         </div>
       </main>
+
+      {/* Combined View/Edit Account Dialog */}
+      <Dialog open={isViewingAccount} onOpenChange={setIsViewingAccount}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Account Details</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="view-name" className="text-right">
+                Name
+              </Label>
+              <Input
+                id="view-name"
+                value={newAccount.name}
+                onChange={(e) =>
+                  setNewAccount({ ...newAccount, name: e.target.value })
+                }
+                className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="view-broker" className="text-right">
+                Broker
+              </Label>
+              <Input
+                id="view-broker"
+                value={newAccount.broker}
+                onChange={(e) =>
+                  setNewAccount({ ...newAccount, broker: e.target.value })
+                }
+                className="col-span-3"
+                placeholder="Optional"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="view-type" className="text-right">
+                Type
+              </Label>
+              <div className="col-span-3">{newAccount.type}</div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="view-currency" className="text-right">
+                Currency
+              </Label>
+              <div className="col-span-3">{newAccount.currency}</div>
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="view-account-number" className="text-right">
+                Account #
+              </Label>
+              <Input
+                id="view-account-number"
+                value={newAccount.account_number}
+                onChange={(e) =>
+                  setNewAccount({
+                    ...newAccount,
+                    account_number: e.target.value,
+                  })
+                }
+                className="col-span-3"
+                placeholder="Optional"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="view-description" className="text-right">
+                Description
+              </Label>
+              <Input
+                id="view-description"
+                value={newAccount.description}
+                onChange={(e) =>
+                  setNewAccount({ ...newAccount, description: e.target.value })
+                }
+                className="col-span-3"
+                placeholder="Optional"
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex justify-between items-center">
+            <Button
+              variant="destructive"
+              onClick={() => {
+                setIsViewingAccount(false);
+                setIsDeletingAccount(true);
+              }}
+            >
+              Delete Account
+            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsViewingAccount(false);
+                  if (selectedAccount) {
+                    setNewAccount({
+                      ...selectedAccount,
+                      type: selectedAccount.type,
+                    });
+                  }
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleUpdateAccount}>Save Changes</Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Account Dialog */}
+      <Dialog open={isDeletingAccount} onOpenChange={setIsDeletingAccount}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Account</DialogTitle>
+            <DialogDescription className="text-destructive">
+              This action cannot be undone. This will permanently delete the
+              account and all associated data (holdings, transactions, etc.).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <p>
+              Please type <strong>{newAccount.name}</strong> to confirm
+              deletion:
+            </p>
+            <Input
+              value={deleteConfirmation}
+              onChange={(e) => setDeleteConfirmation(e.target.value)}
+              placeholder="Type account name to confirm"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeletingAccount(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={deleteConfirmation !== newAccount.name}
+            >
+              Delete Account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

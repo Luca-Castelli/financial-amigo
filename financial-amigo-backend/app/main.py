@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, users
+from app.api import accounts, auth, users
 
 app = FastAPI(
     title="FinancialAmigo API",
@@ -21,6 +21,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/users", tags=["users"])
+app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
 
 
 @app.get("/")

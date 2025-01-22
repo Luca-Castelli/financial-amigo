@@ -55,7 +55,12 @@ def upgrade() -> None:
         ),
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("description", sa.String()),
-        sa.Column("user_id", UUID, sa.ForeignKey("users.id"), nullable=False),
+        sa.Column(
+            "user_id",
+            UUID,
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("type", sa.String(), nullable=False),
         sa.Column("currency", sa.String(3), nullable=False, server_default="CAD"),
         sa.Column("broker", sa.String()),
@@ -112,9 +117,17 @@ def upgrade() -> None:
         sa.Column(
             "id", UUID, primary_key=True, server_default=sa.text("uuid_generate_v4()")
         ),
-        sa.Column("account_id", UUID, sa.ForeignKey("accounts.id"), nullable=False),
         sa.Column(
-            "symbol", sa.String(), sa.ForeignKey("securities.symbol"), nullable=False
+            "account_id",
+            UUID,
+            sa.ForeignKey("accounts.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "symbol",
+            sa.String(),
+            sa.ForeignKey("securities.symbol", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("quantity", sa.Numeric(20, 6), nullable=False),
         sa.Column("avg_cost_native", sa.Numeric(20, 6), nullable=False),
@@ -135,8 +148,17 @@ def upgrade() -> None:
         sa.Column(
             "id", UUID, primary_key=True, server_default=sa.text("uuid_generate_v4()")
         ),
-        sa.Column("account_id", UUID, sa.ForeignKey("accounts.id"), nullable=False),
-        sa.Column("symbol", sa.String(), sa.ForeignKey("securities.symbol")),
+        sa.Column(
+            "account_id",
+            UUID,
+            sa.ForeignKey("accounts.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "symbol",
+            sa.String(),
+            sa.ForeignKey("securities.symbol", ondelete="CASCADE"),
+        ),
         sa.Column("type", sa.String(), nullable=False),
         sa.Column("trade_date", sa.TIMESTAMP(timezone=True), nullable=False),
         sa.Column("settlement_date", sa.TIMESTAMP(timezone=True)),
@@ -161,15 +183,30 @@ def upgrade() -> None:
         sa.Column(
             "id", UUID, primary_key=True, server_default=sa.text("uuid_generate_v4()")
         ),
-        sa.Column("account_id", UUID, sa.ForeignKey("accounts.id"), nullable=False),
+        sa.Column(
+            "account_id",
+            UUID,
+            sa.ForeignKey("accounts.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("type", sa.String(), nullable=False),
         sa.Column("date", sa.TIMESTAMP(timezone=True), nullable=False),
         sa.Column("amount", sa.Numeric(20, 6), nullable=False),
         sa.Column("description", sa.String()),
-        sa.Column("security_id", sa.String(), sa.ForeignKey("securities.symbol")),
-        sa.Column("related_transaction_id", UUID, sa.ForeignKey("transactions.id")),
         sa.Column(
-            "related_cash_transaction_id", UUID, sa.ForeignKey("cash_transactions.id")
+            "security_id",
+            sa.String(),
+            sa.ForeignKey("securities.symbol", ondelete="SET NULL"),
+        ),
+        sa.Column(
+            "related_transaction_id",
+            UUID,
+            sa.ForeignKey("transactions.id", ondelete="SET NULL"),
+        ),
+        sa.Column(
+            "related_cash_transaction_id",
+            UUID,
+            sa.ForeignKey("cash_transactions.id", ondelete="SET NULL"),
         ),
         sa.Column("source_currency", sa.String(3)),
         sa.Column("target_currency", sa.String(3)),
@@ -189,7 +226,10 @@ def upgrade() -> None:
             "id", UUID, primary_key=True, server_default=sa.text("uuid_generate_v4()")
         ),
         sa.Column(
-            "symbol", sa.String(), sa.ForeignKey("securities.symbol"), nullable=False
+            "symbol",
+            sa.String(),
+            sa.ForeignKey("securities.symbol", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("date", sa.Date(), nullable=False),
         sa.Column("open", sa.Numeric(20, 6), nullable=False),
@@ -249,7 +289,12 @@ def upgrade() -> None:
         sa.Column(
             "id", UUID, primary_key=True, server_default=sa.text("uuid_generate_v4()")
         ),
-        sa.Column("benchmark_id", UUID, sa.ForeignKey("benchmarks.id"), nullable=False),
+        sa.Column(
+            "benchmark_id",
+            UUID,
+            sa.ForeignKey("benchmarks.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("date", sa.Date(), nullable=False),
         sa.Column("value", sa.Numeric(20, 6), nullable=False),
         sa.Column(
@@ -267,8 +312,18 @@ def upgrade() -> None:
         sa.Column(
             "id", UUID, primary_key=True, server_default=sa.text("uuid_generate_v4()")
         ),
-        sa.Column("user_id", UUID, sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("benchmark_id", UUID, sa.ForeignKey("benchmarks.id"), nullable=False),
+        sa.Column(
+            "user_id",
+            UUID,
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column(
+            "benchmark_id",
+            UUID,
+            sa.ForeignKey("benchmarks.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("weight", sa.Numeric(5, 2), nullable=False),
         sa.Column("start_date", sa.Date(), nullable=False),
         sa.Column("end_date", sa.Date()),

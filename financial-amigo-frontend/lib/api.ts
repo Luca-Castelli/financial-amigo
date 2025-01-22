@@ -87,6 +87,37 @@ async function fetchWithAuth(
   }
 }
 
+// Types for account management
+export type AccountType = "TFSA" | "RRSP" | "FHSA" | "NON_REGISTERED";
+
+export interface Account {
+  id: string;
+  name: string;
+  type: AccountType;
+  currency: string;
+  description?: string;
+  broker?: string;
+  account_number?: string;
+  cash_balance: number;
+  cash_interest_ytd: number;
+}
+
+export interface CreateAccountData {
+  name: string;
+  type: AccountType;
+  currency: string;
+  description?: string;
+  broker?: string;
+  account_number?: string;
+}
+
+export interface UpdateAccountData {
+  name?: string;
+  description?: string;
+  broker?: string;
+  account_number?: string;
+}
+
 export const api = {
   // User settings
   async getCurrentUser() {
@@ -101,19 +132,33 @@ export const api = {
   },
 
   // Account management
-  async getAccounts() {
+  async getAccounts(): Promise<Account[]> {
     return fetchWithAuth("/api/accounts");
   },
 
-  async createAccount(data: {
-    name: string;
-    type: string;
-    currency: string;
-    broker?: string;
-  }) {
+  async getAccount(id: string): Promise<Account> {
+    return fetchWithAuth(`/api/accounts/${id}`);
+  },
+
+  async createAccount(data: CreateAccountData): Promise<Account> {
     return fetchWithAuth("/api/accounts", {
       method: "POST",
       body: JSON.stringify(data),
+    });
+  },
+
+  async updateAccount(id: string, data: UpdateAccountData): Promise<Account> {
+    return fetchWithAuth(`/api/accounts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteAccount(
+    id: string
+  ): Promise<{ status: string; message: string }> {
+    return fetchWithAuth(`/api/accounts/${id}`, {
+      method: "DELETE",
     });
   },
 

@@ -9,7 +9,7 @@ from sqlalchemy.orm import relationship
 from app.db.base_class import Base
 
 
-class TaxType(str, enum.Enum):
+class AccountType(str, enum.Enum):
     TFSA = "TFSA"
     RRSP = "RRSP"
     FHSA = "FHSA"
@@ -31,12 +31,9 @@ class Account(Base):
 
     # Foreign keys
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    category_id = Column(
-        UUID(as_uuid=True), ForeignKey("account_categories.id"), nullable=False
-    )
 
     # Account details
-    tax_type = Column(Enum(TaxType), nullable=True)  # Null for non-investment accounts
+    type = Column(Enum(AccountType), nullable=False)  # Investment account type
     currency = Column(
         String(3), nullable=False, default="CAD"
     )  # ISO 4217 currency code
@@ -56,7 +53,6 @@ class Account(Base):
 
     # Relationships
     user = relationship("User", back_populates="accounts")
-    category = relationship("AccountCategory", back_populates="accounts")
     holdings = relationship("Holding", back_populates="account")
     transactions = relationship("Transaction", back_populates="account")
     cash_transactions = relationship("CashTransaction", back_populates="account")

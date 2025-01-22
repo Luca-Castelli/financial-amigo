@@ -47,49 +47,39 @@ def upgrade() -> None:
         sa.UniqueConstraint("google_id"),
     )
 
-    # Create account_categories table
-    op.create_table(
-        "account_categories",
-        sa.Column(
-            "id", UUID, primary_key=True, server_default=sa.text("uuid_generate_v4()")
-        ),
-        sa.Column("name", sa.String(), nullable=False),
-        sa.Column("type", sa.String(), nullable=False),
-        sa.Column(
-            "created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()")
-        ),
-        sa.Column(
-            "updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()")
-        ),
-    )
-
     # Create accounts table
     op.create_table(
         "accounts",
         sa.Column(
             "id", UUID, primary_key=True, server_default=sa.text("uuid_generate_v4()")
         ),
-        sa.Column("user_id", UUID, sa.ForeignKey("users.id"), nullable=False),
-        sa.Column(
-            "category_id", UUID, sa.ForeignKey("account_categories.id"), nullable=False
-        ),
         sa.Column("name", sa.String(), nullable=False),
+        sa.Column("description", sa.String()),
+        sa.Column("user_id", UUID, sa.ForeignKey("users.id"), nullable=False),
         sa.Column("type", sa.String(), nullable=False),
-        sa.Column("tax_type", sa.String(), nullable=False),
-        sa.Column("currency", sa.String(3), nullable=False),
+        sa.Column("currency", sa.String(3), nullable=False, server_default="CAD"),
         sa.Column("broker", sa.String()),
+        sa.Column("account_number", sa.String()),
         sa.Column(
             "cash_balance", sa.Numeric(20, 6), nullable=False, server_default="0"
         ),
         sa.Column(
             "cash_interest_ytd", sa.Numeric(20, 6), nullable=False, server_default="0"
         ),
-        sa.Column("cash_last_updated", sa.TIMESTAMP(timezone=True)),
+        sa.Column(
+            "cash_last_updated",
+            sa.TIMESTAMP(timezone=True),
+            server_default=sa.text("now()"),
+        ),
         sa.Column(
             "created_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()")
         ),
         sa.Column(
             "updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.text("now()")
+        ),
+        sa.CheckConstraint(
+            "type IN ('TFSA', 'RRSP', 'FHSA', 'NON_REGISTERED')",
+            name="valid_account_type",
         ),
     )
 
@@ -303,7 +293,6 @@ def downgrade() -> None:
     op.drop_table("holdings")
     op.drop_table("securities")
     op.drop_table("accounts")
-    op.drop_table("account_categories")
     op.drop_table("users")
 
     # Drop uuid-ossp extension

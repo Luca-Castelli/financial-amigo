@@ -142,218 +142,222 @@ FinancialAmigo is a modern investment portfolio tracking application designed to
 
 ## Implementation Plan
 
-### Phase 1: Core Infrastructure
+### Phase 1: Core Infrastructure & Authentication
 
-1. Set up Next.js frontend project ✅
-2. Initialize FastAPI backend ✅
-3. Configure Google OAuth authentication with NextAuth.js ✅
-4. Set up PostgreSQL database ✅
-5. Implement basic API structure ✅
+1. ✓ Set up Next.js frontend project with TypeScript and Tailwind
+2. ✓ Initialize FastAPI backend with PostgreSQL
+3. ✓ Implement Google OAuth authentication with NextAuth.js
+4. ✓ Create initial database schema and migrations
 
-### Phase 2: Data Layer
+### Phase 2: Account Management
 
-1. Implement database models ✅
-2. Set up Yahoo Finance integration
-3. Configure NewsAPI integration
-4. Implement caching system
-5. Set up FX rate handling
+1. Create account management UI (list, add, edit, delete)
+2. Implement backend APIs for account operations
+3. Add cash balance tracking and basic validation
+4. Set up account settings (currency, broker details)
 
-### Phase 3: Core Features
+### Phase 3: Transaction Management
 
-1. User authentication flows
-2. Portfolio dashboard
-3. Transaction management
-4. Account management
-5. Basic analysis features
+1. Create transaction entry forms (trades, cash movements)
+2. Implement transaction history view
+3. Add validation rules for transactions
+4. Set up Yahoo Finance integration for security lookup
+5. Implement FX rates for cross-currency transactions
 
-### Phase 4: Advanced Features
+### Phase 4: Holdings & Portfolio
 
-1. Performance tracking
-2. Dividend tracking
-3. Multi-currency support
-4. News integration
-5. Analysis tools
+1. Create holdings view per account
+2. Implement portfolio dashboard with allocations
+3. Add market data integration for real-time prices
+4. Calculate returns and performance metrics
+5. Set up historical price tracking
 
-### Phase 5: Polish
+### Phase 5: Analysis & Polish
 
-1. UI/UX improvements
-2. Performance optimization
-3. Error handling
-4. Testing
-5. Documentation
+1. Implement benchmark tracking and comparison
+2. Add portfolio analytics and charts
+3. Create custom reports and exports
+4. Performance optimization and caching
+5. Final UI/UX improvements
+
+### Future Enhancements (Post-MVP)
+
+- Support for banking accounts and credit cards
+- Real estate and other asset tracking
+- Liability management
+- Advanced analytics and forecasting
+- Mobile app development
+- Email notifications for key events
+- Document storage for statements
+- Tax reporting features
 
 ## Database Schema
 
+### Users
+
 ```sql
--- Users
 CREATE TABLE users (
-    id UUID PRIMARY KEY,
-    email VARCHAR UNIQUE NOT NULL,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR NOT NULL UNIQUE,
     name VARCHAR NOT NULL,
     image VARCHAR,
     provider VARCHAR NOT NULL DEFAULT 'google',
-    google_id VARCHAR UNIQUE NOT NULL,
+    google_id VARCHAR NOT NULL UNIQUE,
     default_currency VARCHAR(3) NOT NULL DEFAULT 'CAD',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+```
 
--- Account Categories
-CREATE TABLE account_categories (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR NOT NULL,
-    type VARCHAR NOT NULL,  -- INVESTMENT only for MVP
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+### Accounts
 
--- Accounts
+```sql
 CREATE TABLE accounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id),
-    category_id UUID REFERENCES account_categories(id),
+    user_id UUID REFERENCES users(id) NOT NULL,
     name VARCHAR NOT NULL,
-    type VARCHAR NOT NULL,      -- TFSA, RRSP, FHSA, MARGIN, CASH
-    tax_type VARCHAR NOT NULL,  -- REGISTERED, NON_REGISTERED
-    currency VARCHAR(3) NOT NULL,
+    description VARCHAR,
+    type VARCHAR NOT NULL CHECK (type IN ('TFSA', 'RRSP', 'FHSA', 'NON_REGISTERED')),
+    currency VARCHAR(3) NOT NULL DEFAULT 'CAD',
     broker VARCHAR,
+    account_number VARCHAR,
     cash_balance DECIMAL(20,6) NOT NULL DEFAULT 0,
     cash_interest_ytd DECIMAL(20,6) NOT NULL DEFAULT 0,
-    cash_last_updated TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Securities metadata
-CREATE TABLE securities (
-    symbol VARCHAR PRIMARY KEY,
-    name VARCHAR NOT NULL,
-    asset_type VARCHAR NOT NULL,    -- EQUITY, FIXED_INCOME, CASH
-    asset_subtype VARCHAR,          -- For equities: LARGE_CAP, MID_CAP, etc.
-    sector VARCHAR,                 -- Technology, Healthcare, etc.
-    industry VARCHAR,
-    exchange VARCHAR NOT NULL,
-    currency VARCHAR(3) NOT NULL,   -- Trading currency
-    last_price DECIMAL(20,6),
-    last_price_updated TIMESTAMP WITH TIME ZONE,
-    market_cap DECIMAL(20,2),
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Holdings
-CREATE TABLE holdings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    account_id UUID REFERENCES accounts(id),
-    symbol VARCHAR REFERENCES securities(symbol),
-    quantity DECIMAL(20,6) NOT NULL,
-    avg_cost_native DECIMAL(20,6) NOT NULL,  -- In security's currency
-    market_value_native DECIMAL(20,6),       -- In security's currency
-    unrealized_pl_native DECIMAL(20,6),      -- In security's currency
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE (account_id, symbol)
-);
-
--- Investment Transactions
-CREATE TABLE transactions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    account_id UUID REFERENCES accounts(id),
-    symbol VARCHAR REFERENCES securities(symbol),
-    type VARCHAR NOT NULL,          -- BUY, SELL, DIVIDEND
-    trade_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    settlement_date TIMESTAMP WITH TIME ZONE,
-    quantity DECIMAL(20,6),         -- Null for cash transactions, negative for sells
-    price_native DECIMAL(20,6),     -- In security's currency
-    total_native DECIMAL(20,6),     -- In security's currency
-    total_account DECIMAL(20,6),    -- In account's currency
-    fx_rate DECIMAL(20,6) NOT NULL, -- Rate between security and account currency
-    fees_native DECIMAL(20,6) DEFAULT 0,
-    status VARCHAR NOT NULL DEFAULT 'PENDING', -- PENDING, SETTLED, CANCELLED
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Cash Transactions
-CREATE TABLE cash_transactions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    account_id UUID REFERENCES accounts(id),
-    type VARCHAR NOT NULL,          -- CONTRIBUTION, WITHDRAWAL, INTEREST, FEE, DIVIDEND, TRADE
-    date TIMESTAMP WITH TIME ZONE NOT NULL,
-    amount DECIMAL(20,6) NOT NULL,  -- Positive for inflow, negative for outflow
-    description VARCHAR,
-    security_id UUID REFERENCES securities(id),           -- For dividends
-    related_transaction_id UUID REFERENCES transactions(id), -- For trades
-    related_cash_transaction_id UUID REFERENCES cash_transactions(id), -- For transfers
-    source_currency VARCHAR(3),     -- For transfers/FX
-    target_currency VARCHAR(3),     -- For transfers/FX
-    fx_rate DECIMAL(20,6),         -- For transfers/FX
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Historical Prices
-CREATE TABLE historical_prices (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    symbol VARCHAR NOT NULL REFERENCES securities(symbol),
-    date DATE NOT NULL,
-    open DECIMAL(20,6) NOT NULL,
-    high DECIMAL(20,6) NOT NULL,
-    low DECIMAL(20,6) NOT NULL,
-    close DECIMAL(20,6) NOT NULL,
-    volume BIGINT NOT NULL,
-    adjusted_close DECIMAL(20,6) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE (symbol, date)
-);
-
--- Historical FX Rates
-CREATE TABLE historical_fx_rates (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    from_currency VARCHAR(3) NOT NULL,
-    to_currency VARCHAR(3) NOT NULL,
-    date DATE NOT NULL,
-    rate DECIMAL(20,6) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE (from_currency, to_currency, date)
-);
-
--- Benchmarks
-CREATE TABLE benchmarks (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    symbol VARCHAR NOT NULL,
-    name VARCHAR NOT NULL,
-    currency VARCHAR(3) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Benchmark Values
-CREATE TABLE benchmark_values (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    benchmark_id UUID REFERENCES benchmarks(id),
-    date DATE NOT NULL,
-    value DECIMAL(20,6) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE (benchmark_id, date)
-);
-
--- Portfolio Benchmarks
-CREATE TABLE portfolio_benchmarks (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id),
-    benchmark_id UUID REFERENCES benchmarks(id),
-    weight DECIMAL(5,2) NOT NULL,
-    start_date DATE NOT NULL,
-    end_date DATE,
+    cash_last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 ```
+
+-- Securities metadata
+CREATE TABLE securities (
+symbol VARCHAR PRIMARY KEY,
+name VARCHAR NOT NULL,
+asset_type VARCHAR NOT NULL, -- EQUITY, FIXED_INCOME, CASH
+asset_subtype VARCHAR, -- For equities: LARGE_CAP, MID_CAP, etc.
+sector VARCHAR, -- Technology, Healthcare, etc.
+industry VARCHAR,
+exchange VARCHAR NOT NULL,
+currency VARCHAR(3) NOT NULL, -- Trading currency
+last_price DECIMAL(20,6),
+last_price_updated TIMESTAMP WITH TIME ZONE,
+market_cap DECIMAL(20,2),
+is_active BOOLEAN DEFAULT true,
+created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Holdings
+CREATE TABLE holdings (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+account_id UUID REFERENCES accounts(id),
+symbol VARCHAR REFERENCES securities(symbol),
+quantity DECIMAL(20,6) NOT NULL,
+avg_cost_native DECIMAL(20,6) NOT NULL, -- In security's currency
+market_value_native DECIMAL(20,6), -- In security's currency
+unrealized_pl_native DECIMAL(20,6), -- In security's currency
+created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+UNIQUE (account_id, symbol)
+);
+
+-- Investment Transactions
+CREATE TABLE transactions (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+account_id UUID REFERENCES accounts(id),
+symbol VARCHAR REFERENCES securities(symbol),
+type VARCHAR NOT NULL, -- BUY, SELL, DIVIDEND
+trade_date TIMESTAMP WITH TIME ZONE NOT NULL,
+settlement_date TIMESTAMP WITH TIME ZONE,
+quantity DECIMAL(20,6), -- Null for cash transactions, negative for sells
+price_native DECIMAL(20,6), -- In security's currency
+total_native DECIMAL(20,6), -- In security's currency
+total_account DECIMAL(20,6), -- In account's currency
+fx_rate DECIMAL(20,6) NOT NULL, -- Rate between security and account currency
+fees_native DECIMAL(20,6) DEFAULT 0,
+status VARCHAR NOT NULL DEFAULT 'PENDING', -- PENDING, SETTLED, CANCELLED
+created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Cash Transactions
+CREATE TABLE cash_transactions (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+account_id UUID REFERENCES accounts(id),
+type VARCHAR NOT NULL, -- CONTRIBUTION, WITHDRAWAL, INTEREST, FEE, DIVIDEND, TRADE
+date TIMESTAMP WITH TIME ZONE NOT NULL,
+amount DECIMAL(20,6) NOT NULL, -- Positive for inflow, negative for outflow
+description VARCHAR,
+security_id UUID REFERENCES securities(id), -- For dividends
+related_transaction_id UUID REFERENCES transactions(id), -- For trades
+related_cash_transaction_id UUID REFERENCES cash_transactions(id), -- For transfers
+source_currency VARCHAR(3), -- For transfers/FX
+target_currency VARCHAR(3), -- For transfers/FX
+fx_rate DECIMAL(20,6), -- For transfers/FX
+created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Historical Prices
+CREATE TABLE historical_prices (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+symbol VARCHAR NOT NULL REFERENCES securities(symbol),
+date DATE NOT NULL,
+open DECIMAL(20,6) NOT NULL,
+high DECIMAL(20,6) NOT NULL,
+low DECIMAL(20,6) NOT NULL,
+close DECIMAL(20,6) NOT NULL,
+volume BIGINT NOT NULL,
+adjusted_close DECIMAL(20,6) NOT NULL,
+created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+UNIQUE (symbol, date)
+);
+
+-- Historical FX Rates
+CREATE TABLE historical_fx_rates (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+from_currency VARCHAR(3) NOT NULL,
+to_currency VARCHAR(3) NOT NULL,
+date DATE NOT NULL,
+rate DECIMAL(20,6) NOT NULL,
+created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+UNIQUE (from_currency, to_currency, date)
+);
+
+-- Benchmarks
+CREATE TABLE benchmarks (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+symbol VARCHAR NOT NULL,
+name VARCHAR NOT NULL,
+currency VARCHAR(3) NOT NULL,
+created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Benchmark Values
+CREATE TABLE benchmark_values (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+benchmark_id UUID REFERENCES benchmarks(id),
+date DATE NOT NULL,
+value DECIMAL(20,6) NOT NULL,
+created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+UNIQUE (benchmark_id, date)
+);
+
+-- Portfolio Benchmarks
+CREATE TABLE portfolio_benchmarks (
+id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+user_id UUID REFERENCES users(id),
+benchmark_id UUID REFERENCES benchmarks(id),
+weight DECIMAL(5,2) NOT NULL,
+start_date DATE NOT NULL,
+end_date DATE,
+created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
 ## Non-Functional Requirements
 

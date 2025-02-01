@@ -17,16 +17,14 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String, unique=True, index=True, nullable=False)
-    name = Column(String, nullable=False)  # Required for Google OAuth
-    image = Column(String, nullable=True)  # Profile image URL
-    provider = Column(String, nullable=False, default="google")
+    name = Column(String, nullable=False)
+    image = Column(String, nullable=True)
+    provider = Column(String, nullable=False)
     google_id = Column(String, unique=True, nullable=False)
     default_currency = Column(String, nullable=False, default="CAD")
 
-    # Relationships - use string reference to avoid circular imports
     accounts = relationship("Account", back_populates="user")
 
-    # Audit fields
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
     updated_at = Column(
         DateTime,

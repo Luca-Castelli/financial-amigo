@@ -1,8 +1,7 @@
 import enum
 import uuid
-from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Numeric, String
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Numeric, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -31,8 +30,8 @@ class CashTransaction(Base):
 
     # Foreign keys
     account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False)
-    security_id = Column(
-        UUID(as_uuid=True), ForeignKey("securities.id"), nullable=True
+    symbol = Column(
+        String, ForeignKey("securities.symbol"), nullable=True
     )  # For dividends
     related_transaction_id = Column(
         UUID(as_uuid=True), ForeignKey("transactions.id"), nullable=True
@@ -43,18 +42,16 @@ class CashTransaction(Base):
 
     # Transaction details
     type = Column(Enum(CashTransactionType), nullable=False)
-    date = Column(DateTime, nullable=False)
+    date = Column(DateTime(timezone=True), nullable=False)
     amount = Column(
         Numeric(20, 6), nullable=False
     )  # Positive for inflow, negative for outflow
-    description = Column(String, nullable=True)
+    description = Column(String)
 
     # FX details for transfers between accounts with different currencies
-    source_currency = Column(String(3), nullable=True)  # ISO 4217 currency code
-    target_currency = Column(String(3), nullable=True)  # ISO 4217 currency code
-    fx_rate = Column(
-        Numeric(20, 6), nullable=True
-    )  # Rate from source to target currency
+    source_currency = Column(String(3))  # ISO 4217 currency code
+    target_currency = Column(String(3))  # ISO 4217 currency code
+    fx_rate = Column(Numeric(20, 6))  # Rate from source to target currency
 
     # Relationships
     account = relationship("Account", back_populates="cash_transactions")
@@ -69,10 +66,12 @@ class CashTransaction(Base):
     )
 
     # Audit fields
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow(),
-        onupdate=datetime.utcnow(),
+        server_default=text("now()"),
+        onupdate=text("now()"),
     )

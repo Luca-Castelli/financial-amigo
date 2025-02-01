@@ -1,83 +1,72 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ModeToggle } from "./mode-toggle";
-import { useSession, signOut } from "next-auth/react";
+import { useAuth } from "@/lib/auth-context";
+import { clearAuth } from "@/lib/auth-client";
 
-export function Header() {
-  const { data: session } = useSession();
+const navigation = [
+  { name: "Dashboard", href: "/dashboard" },
+  { name: "Accounts", href: "/accounts" },
+  { name: "Holdings", href: "/holdings" },
+  { name: "Transactions", href: "/transactions" },
+];
 
-  const handleSignOut = () => {
-    signOut({ callbackUrl: "/" });
+export default function Header() {
+  const { user } = useAuth();
+  const pathname = usePathname();
+
+  const handleLogout = () => {
+    clearAuth();
+    window.location.href = "/login";
   };
+
+  // Don't show header on login page
+  if (pathname === "/login") return null;
 
   return (
     <header className="bg-background border-b">
-      <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" aria-label="Top">
-        <div className="flex w-full items-center justify-between border-b border-indigo-500 py-6 lg:border-none">
+      <nav className="container mx-auto px-4 sm:px-6 lg:px-8" aria-label="Top">
+        <div className="flex h-16 items-center justify-between">
           <div className="flex items-center">
-            <Link href="/">
-              <span className="sr-only">FinancialAmigo</span>
-              <img
-                className="h-10 w-auto"
-                src="/logo.svg"
-                alt="FinancialAmigo"
-              />
+            <Link href="/" className="text-xl font-bold">
+              FinancialAmigo
             </Link>
-            <div className="ml-10 hidden space-x-8 lg:block">
-              <Link
-                href="/dashboard"
-                className="text-base font-medium text-foreground hover:text-foreground/80"
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/transactions"
-                className="text-base font-medium text-foreground hover:text-foreground/80"
-              >
-                Transactions
-              </Link>
-              <Link
-                href="/settings"
-                className="text-base font-medium text-foreground hover:text-foreground/80"
-              >
-                Settings
-              </Link>
-            </div>
+            {user && (
+              <div className="ml-10 hidden space-x-8 md:flex">
+                {navigation.map((link) => (
+                  <Link
+                    key={link.name}
+                    href={link.href}
+                    className={`text-sm font-medium transition-colors hover:text-primary ${
+                      pathname === link.href
+                        ? "text-primary"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {link.name}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="ml-10 space-x-4 flex items-center">
-            <ModeToggle />
-            {session ? (
-              <Button variant="outline" onClick={handleSignOut}>
-                Sign out
-              </Button>
+          <div className="flex items-center space-x-4">
+            {user ? (
+              <>
+                <span className="text-sm text-muted-foreground">
+                  {user.email}
+                </span>
+                <Button variant="outline" onClick={handleLogout}>
+                  Log out
+                </Button>
+              </>
             ) : (
-              <Button variant="outline" asChild>
-                <Link href="/login">Sign in with Google</Link>
+              <Button asChild variant="outline">
+                <Link href="/login">Log in</Link>
               </Button>
             )}
           </div>
-        </div>
-        <div className="flex flex-wrap justify-center space-x-6 py-4 lg:hidden">
-          <Link
-            href="/dashboard"
-            className="text-base font-medium text-foreground hover:text-foreground/80"
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/transactions"
-            className="text-base font-medium text-foreground hover:text-foreground/80"
-          >
-            Transactions
-          </Link>
-          <Link
-            href="/settings"
-            className="text-base font-medium text-foreground hover:text-foreground/80"
-          >
-            Settings
-          </Link>
         </div>
       </nav>
     </header>

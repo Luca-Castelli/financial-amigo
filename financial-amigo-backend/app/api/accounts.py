@@ -1,172 +1,108 @@
 from typing import List
-from uuid import UUID
 
-from app.core.auth import get_current_user, require_auth
+from app.core.auth import get_current_user
 from app.core.database import get_db
-from app.models.account import Account, AccountType
+from app.models.account import Account
 from app.models.user import User
+from app.schemas.account import AccountCreate, AccountResponse, AccountUpdate
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 router = APIRouter()
 
 
-class AccountCreate(BaseModel):
-    name: str
-    type: AccountType
-    currency: str
-    description: str | None = None
-    broker: str | None = None
-    account_number: str | None = None
-
-
-class AccountUpdate(BaseModel):
-    name: str | None = None
-    description: str | None = None
-    broker: str | None = None
-    account_number: str | None = None
-
-
-class AccountResponse(BaseModel):
-    id: UUID
-    name: str
-    type: AccountType
-    currency: str
-    description: str | None = None
-    broker: str | None = None
-    account_number: str | None = None
-    cash_balance: float = 0
-    cash_interest_ytd: float = 0
-
-    class Config:
-        from_attributes = True
-
-
-@router.post("", response_model=AccountResponse)
-@require_auth
+@router.post("")
 async def create_account(
-    account: AccountCreate,
+    account_data: AccountCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> Account:
-    """Create a new investment account."""
-    # Validate currency
-    if account.currency not in ["CAD", "USD"]:
-        raise HTTPException(400, "Invalid currency. Must be CAD or USD.")
-
-    # Create account
-    db_account = Account(
-        user_id=current_user.id,
-        name=account.name,
-        type=account.type,
-        currency=account.currency,
-        description=account.description,
-        broker=account.broker,
-        account_number=account.account_number,
-    )
-    db.add(db_account)
-
+) -> AccountResponse:
+    """Create a new account."""
+    account = Account(**account_data.dict(), user_id=current_user.id)
+    db.add(account)
     try:
         db.commit()
-        db.refresh(db_account)
-        return db_account
+        db.refresh(account)
+        return AccountResponse.from_orm(account)
     except Exception as e:
         db.rollback()
-        raise HTTPException(500, f"Failed to create account: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("", response_model=List[AccountResponse])
-@require_auth
+@router.get("")
 async def list_accounts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> List[Account]:
+) -> List[AccountResponse]:
     """List all accounts for the current user."""
-    return db.query(Account).filter(Account.user_id == current_user.id).all()
+    accounts = db.query(Account).filter(Account.user_id == current_user.id).all()
+    return [AccountResponse.from_orm(account) for account in accounts]
 
 
-@router.get("/{account_id}", response_model=AccountResponse)
-@require_auth
+@router.get("/{account_id}")
 async def get_account(
-    account_id: UUID,
+    account_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> Account:
-    """Get a specific account by ID."""
+) -> AccountResponse:
+    """Get a specific account."""
     account = (
         db.query(Account)
         .filter(Account.id == account_id, Account.user_id == current_user.id)
         .first()
     )
     if not account:
-        raise HTTPException(404, "Account not found")
-    return account
+        raise HTTPException(status_code=404, detail="Account not found")
+    return AccountResponse.from_orm(account)
 
 
-@router.patch("/{account_id}", response_model=AccountResponse)
-@require_auth
+@router.patch("/{account_id}")
 async def update_account(
-    account_id: UUID,
-    account_update: AccountUpdate,
+    account_id: str,
+    account_data: AccountUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> Account:
-    """Update an account's details."""
-    # Get existing account
+) -> AccountResponse:
+    """Update an account."""
     account = (
         db.query(Account)
         .filter(Account.id == account_id, Account.user_id == current_user.id)
         .first()
     )
     if not account:
-        raise HTTPException(404, "Account not found")
+        raise HTTPException(status_code=404, detail="Account not found")
 
-    # Update fields if provided
-    if account_update.name is not None:
-        account.name = account_update.name
-    if account_update.description is not None:
-        account.description = account_update.description
-    if account_update.broker is not None:
-        account.broker = account_update.broker
-    if account_update.account_number is not None:
-        account.account_number = account_update.account_number
+    for key, value in account_data.dict(exclude_unset=True).items():
+        setattr(account, key, value)
 
     try:
         db.commit()
         db.refresh(account)
-        return account
+        return AccountResponse.from_orm(account)
     except Exception as e:
         db.rollback()
-        raise HTTPException(500, f"Failed to update account: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{account_id}")
-@require_auth
 async def delete_account(
-    account_id: UUID,
+    account_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
-    """Delete an account and all associated data (holdings, transactions, etc.)."""
-    # Get the account
+) -> dict:
+    """Delete an account."""
     account = (
         db.query(Account)
         .filter(Account.id == account_id, Account.user_id == current_user.id)
         .first()
     )
     if not account:
-        raise HTTPException(404, "Account not found")
+        raise HTTPException(status_code=404, detail="Account not found")
 
     try:
-        # Delete the account (cascading will handle related records)
-        account_name = account.name  # Store name before deletion for response
         db.delete(account)
         db.commit()
-        return {
-            "status": "success",
-            "message": f"Account '{account_name}' and all associated data deleted successfully",
-        }
+        return {"status": "success", "message": "Account deleted successfully"}
     except Exception as e:
         db.rollback()
-        raise HTTPException(500, f"Failed to delete account: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))

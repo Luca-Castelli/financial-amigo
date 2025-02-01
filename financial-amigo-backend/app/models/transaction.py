@@ -1,8 +1,7 @@
 import enum
 import uuid
-from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Numeric, String
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Numeric, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -25,34 +24,25 @@ class Transaction(Base):
 
     # Foreign keys
     account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False)
-    security_id = Column(
-        UUID(as_uuid=True), ForeignKey("securities.id"), nullable=False
-    )
+    symbol = Column(String, ForeignKey("securities.symbol"), nullable=False)
 
     # Transaction details
     type = Column(Enum(TransactionType), nullable=False)
-    trade_date = Column(DateTime, nullable=False)  # When the trade was executed
-    settlement_date = Column(
-        DateTime, nullable=True
-    )  # When the trade settles (T+2 typically)
+    trade_date = Column(
+        DateTime(timezone=True), nullable=False
+    )  # When the trade was executed
     quantity = Column(Numeric(20, 6), nullable=False)  # Negative for sells
     price_native = Column(
         Numeric(20, 6), nullable=False
     )  # Price per unit in security's currency
-    total_native = Column(
-        Numeric(20, 6), nullable=False
-    )  # Total in security's currency
-    total_account = Column(
-        Numeric(20, 6), nullable=False
-    )  # Total in account's currency
-    fees_native = Column(
-        Numeric(20, 6), nullable=False, default=0
-    )  # Fees in security's currency
-    description = Column(String, nullable=True)
+    commission_native = Column(
+        Numeric(20, 6), nullable=False, server_default="0"
+    )  # Commission in security's currency
+    description = Column(String)
 
     # Exchange rate details
     fx_rate = Column(
-        Numeric(20, 6), nullable=True
+        Numeric(20, 6), nullable=False
     )  # Rate between security and account currency
 
     # Relationships
@@ -63,10 +53,12 @@ class Transaction(Base):
     )
 
     # Audit fields
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow(),
-        onupdate=datetime.utcnow(),
+        server_default=text("now()"),
+        onupdate=text("now()"),
     )

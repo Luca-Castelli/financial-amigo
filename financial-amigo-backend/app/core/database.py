@@ -4,17 +4,13 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 
-# Create SQLAlchemy engine
-engine = create_engine(settings.sync_database_url)
+engine = create_engine(settings.database_url)
 
-# Create SessionLocal class
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Create Base class
 Base = declarative_base()
 
 
-# Dependency
 def get_db():
     db = SessionLocal()
     try:

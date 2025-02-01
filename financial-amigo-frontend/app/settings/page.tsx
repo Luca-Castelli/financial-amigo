@@ -36,42 +36,69 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useSession } from "next-auth/react";
-import { api, Account, AccountType, CreateAccountData } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { users, accounts } from "@/lib/api";
+import type { Account } from "@/lib/api";
 import toast from "react-hot-toast";
+import { useAuth } from "@/lib/auth-context";
+
+type AccountType = "TFSA" | "RRSP" | "FHSA" | "NON_REGISTERED";
+interface CreateAccountData {
+  name: string;
+  type: AccountType;
+  currency: "CAD" | "USD";
+  description?: string;
+  broker?: string;
+  account_number?: string;
+}
 
 export default function Settings() {
-  const { data: session } = useSession();
-  const [accounts, setAccounts] = useState<Account[]>([]);
+  const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
+  const [accountsList, setAccountsList] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [defaultCurrency, setDefaultCurrency] = useState<string>("");
+  const [defaultCurrency, setDefaultCurrency] = useState<"CAD" | "USD">("CAD");
 
   // Account management state
   const [isAddingAccount, setIsAddingAccount] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
-  const [isEditingAccount, setIsEditingAccount] = useState(false);
   const [isViewingAccount, setIsViewingAccount] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
-  const [newAccount, setNewAccount] = useState<CreateAccountData>({
+
+  // Separate state for new account form
+  const emptyAccountForm: CreateAccountData = {
     name: "",
     type: "NON_REGISTERED",
     currency: "CAD",
     description: "",
     broker: "",
     account_number: "",
-  });
+  };
+
+  const [newAccount, setNewAccount] =
+    useState<CreateAccountData>(emptyAccountForm);
+  const [editAccount, setEditAccount] =
+    useState<CreateAccountData>(emptyAccountForm);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [authLoading, user, router]);
 
   // Fetch user settings and accounts
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [user, accountsData] = await Promise.all([
-          api.getCurrentUser(),
-          api.getAccounts(),
+        const [userResponse, accountsResponse] = await Promise.all([
+          users.me(),
+          accounts.list(),
         ]);
-        setDefaultCurrency(user.default_currency);
-        setAccounts(accountsData);
+        setDefaultCurrency(
+          (userResponse.data.default_currency as "CAD" | "USD") || "CAD"
+        );
+        setAccountsList(accountsResponse.data);
       } catch (error) {
         console.error("Failed to fetch data:", error);
         toast.error("Failed to load settings");
@@ -81,10 +108,10 @@ export default function Settings() {
     fetchData();
   }, []);
 
-  const handleCurrencyChange = async (value: string) => {
+  const handleCurrencyChange = async (value: "CAD" | "USD") => {
     setIsLoading(true);
     try {
-      await api.updateUserSettings({ default_currency: value });
+      await users.updateSettings({ default_currency: value });
       setDefaultCurrency(value);
       toast.success("Default currency updated successfully");
     } catch (error) {
@@ -102,17 +129,10 @@ export default function Settings() {
     }
 
     try {
-      const account = await api.createAccount(newAccount);
-      setAccounts((prev) => [...prev, account]);
+      const response = await accounts.create(newAccount);
+      setAccountsList((prev: Account[]) => [...prev, response.data]);
       setIsAddingAccount(false);
-      setNewAccount({
-        name: "",
-        type: "NON_REGISTERED",
-        currency: "CAD",
-        description: "",
-        broker: "",
-        account_number: "",
-      });
+      setNewAccount(emptyAccountForm);
       toast.success("Account created successfully");
     } catch (error) {
       console.error("Failed to create account:", error);
@@ -122,23 +142,26 @@ export default function Settings() {
 
   const handleUpdateAccount = async () => {
     if (!selectedAccount) return;
-    if (!newAccount.name) {
+    if (!editAccount.name) {
       toast.error("Account name is required");
       return;
     }
 
     try {
-      const updated = await api.updateAccount(selectedAccount.id, {
-        name: newAccount.name,
-        description: newAccount.description,
-        broker: newAccount.broker,
-        account_number: newAccount.account_number,
+      const response = await accounts.update(selectedAccount.id, {
+        name: editAccount.name,
+        description: editAccount.description,
+        broker: editAccount.broker,
+        account_number: editAccount.account_number,
       });
-      setAccounts((prev) =>
-        prev.map((acc) => (acc.id === updated.id ? updated : acc))
+      setAccountsList((prev: Account[]) =>
+        prev.map((acc: Account) =>
+          acc.id === response.data.id ? response.data : acc
+        )
       );
       setIsViewingAccount(false);
-      setSelectedAccount(updated);
+      setSelectedAccount(response.data);
+      setEditAccount(emptyAccountForm);
       toast.success("Account updated successfully");
     } catch (error) {
       console.error("Failed to update account:", error);
@@ -154,9 +177,9 @@ export default function Settings() {
     }
 
     try {
-      await api.deleteAccount(selectedAccount.id);
-      setAccounts((prev) =>
-        prev.filter((acc) => acc.id !== selectedAccount.id)
+      await accounts.delete(selectedAccount.id);
+      setAccountsList((prev: Account[]) =>
+        prev.filter((acc: Account) => acc.id !== selectedAccount.id)
       );
       setIsDeletingAccount(false);
       setSelectedAccount(null);
@@ -167,6 +190,18 @@ export default function Settings() {
       toast.error("Failed to delete account");
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="text-lg">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -186,19 +221,11 @@ export default function Settings() {
                   <div className="grid w-full items-center gap-4">
                     <div className="flex flex-col space-y-1.5">
                       <Label htmlFor="name">Name</Label>
-                      <Input
-                        id="name"
-                        value={session?.user?.name || ""}
-                        disabled
-                      />
+                      <Input id="name" value={user?.name || ""} disabled />
                     </div>
                     <div className="flex flex-col space-y-1.5">
                       <Label htmlFor="email">Email</Label>
-                      <Input
-                        id="email"
-                        value={session?.user?.email || ""}
-                        disabled
-                      />
+                      <Input id="email" value={user?.email || ""} disabled />
                     </div>
                     <div className="flex flex-col space-y-1.5">
                       <Label htmlFor="currency">Default Currency</Label>
@@ -234,7 +261,10 @@ export default function Settings() {
                   </div>
                   <Dialog
                     open={isAddingAccount}
-                    onOpenChange={setIsAddingAccount}
+                    onOpenChange={(open) => {
+                      setIsAddingAccount(open);
+                      if (!open) setNewAccount(emptyAccountForm);
+                    }}
                   >
                     <DialogTrigger asChild>
                       <Button>Add Account</Button>
@@ -367,7 +397,10 @@ export default function Settings() {
                       <DialogFooter>
                         <Button
                           variant="outline"
-                          onClick={() => setIsAddingAccount(false)}
+                          onClick={() => {
+                            setIsAddingAccount(false);
+                            setNewAccount(emptyAccountForm);
+                          }}
                         >
                           Cancel
                         </Button>
@@ -388,13 +421,13 @@ export default function Settings() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {accounts.map((account) => (
+                    {accountsList.map((account) => (
                       <TableRow
                         key={account.id}
                         className="cursor-pointer hover:bg-muted/50"
                         onClick={() => {
                           setSelectedAccount(account);
-                          setNewAccount({
+                          setEditAccount({
                             ...account,
                             type: account.type,
                           });
@@ -415,8 +448,14 @@ export default function Settings() {
         </div>
       </main>
 
-      {/* Combined View/Edit Account Dialog */}
-      <Dialog open={isViewingAccount} onOpenChange={setIsViewingAccount}>
+      {/* View/Edit Account Dialog */}
+      <Dialog
+        open={isViewingAccount}
+        onOpenChange={(open) => {
+          setIsViewingAccount(open);
+          if (!open) setEditAccount(emptyAccountForm);
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Account Details</DialogTitle>
@@ -428,9 +467,9 @@ export default function Settings() {
               </Label>
               <Input
                 id="view-name"
-                value={newAccount.name}
+                value={editAccount.name}
                 onChange={(e) =>
-                  setNewAccount({ ...newAccount, name: e.target.value })
+                  setEditAccount({ ...editAccount, name: e.target.value })
                 }
                 className="col-span-3"
               />
@@ -441,9 +480,9 @@ export default function Settings() {
               </Label>
               <Input
                 id="view-broker"
-                value={newAccount.broker}
+                value={editAccount.broker}
                 onChange={(e) =>
-                  setNewAccount({ ...newAccount, broker: e.target.value })
+                  setEditAccount({ ...editAccount, broker: e.target.value })
                 }
                 className="col-span-3"
                 placeholder="Optional"
@@ -453,13 +492,13 @@ export default function Settings() {
               <Label htmlFor="view-type" className="text-right">
                 Type
               </Label>
-              <div className="col-span-3">{newAccount.type}</div>
+              <div className="col-span-3">{editAccount.type}</div>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="view-currency" className="text-right">
                 Currency
               </Label>
-              <div className="col-span-3">{newAccount.currency}</div>
+              <div className="col-span-3">{editAccount.currency}</div>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="view-account-number" className="text-right">
@@ -467,10 +506,10 @@ export default function Settings() {
               </Label>
               <Input
                 id="view-account-number"
-                value={newAccount.account_number}
+                value={editAccount.account_number}
                 onChange={(e) =>
-                  setNewAccount({
-                    ...newAccount,
+                  setEditAccount({
+                    ...editAccount,
                     account_number: e.target.value,
                   })
                 }
@@ -484,9 +523,12 @@ export default function Settings() {
               </Label>
               <Input
                 id="view-description"
-                value={newAccount.description}
+                value={editAccount.description}
                 onChange={(e) =>
-                  setNewAccount({ ...newAccount, description: e.target.value })
+                  setEditAccount({
+                    ...editAccount,
+                    description: e.target.value,
+                  })
                 }
                 className="col-span-3"
                 placeholder="Optional"
@@ -508,12 +550,7 @@ export default function Settings() {
                 variant="outline"
                 onClick={() => {
                   setIsViewingAccount(false);
-                  if (selectedAccount) {
-                    setNewAccount({
-                      ...selectedAccount,
-                      type: selectedAccount.type,
-                    });
-                  }
+                  setEditAccount(emptyAccountForm);
                 }}
               >
                 Cancel

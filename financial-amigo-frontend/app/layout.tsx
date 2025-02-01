@@ -1,42 +1,30 @@
-"use client";
-
-import { Providers } from "./providers";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { ThemeProvider } from "@/components/theme-provider";
-import { useState, useEffect } from "react";
+import { Providers } from "./providers";
+import Header from "@/components/Header";
 
 const inter = Inter({ subsets: ["latin"] });
 
-export default function RootLayout({
-  children,
-}: {
+export const metadata = {
+  title: "FinancialAmigo",
+  description: "Your personal investment tracker",
+};
+
+interface RootLayoutProps {
   children: React.ReactNode;
-}) {
-  const [mounted, setMounted] = useState(false);
+}
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return null;
-  }
-
+export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className={inter.className}>
         <Providers>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-            <div className="min-h-screen bg-background text-foreground">
+          <div className="min-h-screen flex flex-col">
+            <Header />
+            <main className="flex-1 container mx-auto px-4 py-8">
               {children}
-            </div>
-          </ThemeProvider>
+            </main>
+          </div>
         </Providers>
       </body>
     </html>

@@ -1,27 +1,20 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import accounts, auth, users
+from app.api.api import api_router
+from app.core.cors import setup_cors
+from app.core.security_headers import setup_security_headers
 
-app = FastAPI(
-    title="FinancialAmigo API",
-    description="Backend API for FinancialAmigo portfolio tracking application",
-    version="1.0.0",
-)
+# Create FastAPI app
+app = FastAPI(title="FinancialAmigo API")
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Next.js frontend
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Setup CORS before adding routes
+setup_cors(app)
 
-# Include routers
-app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(users.router, prefix="/api/users", tags=["users"])
-app.include_router(accounts.router, prefix="/api/accounts", tags=["accounts"])
+# Include API router with /api prefix
+app.include_router(api_router, prefix="/api")
+
+# Setup security headers
+setup_security_headers(app)
 
 
 @app.get("/")

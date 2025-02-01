@@ -1,7 +1,14 @@
 import uuid
-from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Numeric, UniqueConstraint
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -19,19 +26,15 @@ class Holding(Base):
 
     # Foreign keys
     account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id"), nullable=False)
-    security_id = Column(
-        UUID(as_uuid=True), ForeignKey("securities.id"), nullable=False
-    )
+    symbol = Column(String, ForeignKey("securities.symbol"), nullable=False)
 
     # Position details
     quantity = Column(Numeric(20, 6), nullable=False)
     avg_cost_native = Column(Numeric(20, 6), nullable=False)  # In security's currency
-    book_value = Column(
-        Numeric(20, 6), nullable=False
-    )  # Total cost in account currency
-    market_value = Column(
-        Numeric(20, 6), nullable=True
-    )  # Current value in account currency
+    market_value_native = Column(Numeric(20, 6))  # Current value in security's currency
+    unrealized_pl_native = Column(
+        Numeric(20, 6)
+    )  # Unrealized P/L in security's currency
 
     # Relationships
     account = relationship("Account", back_populates="holdings")
@@ -39,14 +42,16 @@ class Holding(Base):
 
     # Ensure unique security per account
     __table_args__ = (
-        UniqueConstraint("account_id", "security_id", name="uix_account_security"),
+        UniqueConstraint("account_id", "symbol", name="uix_account_security"),
     )
 
     # Audit fields
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow(),
-        onupdate=datetime.utcnow(),
+        server_default=text("now()"),
+        onupdate=text("now()"),
     )

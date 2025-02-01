@@ -1,7 +1,6 @@
 import uuid
-from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Numeric, String, UniqueConstraint
+from sqlalchemy import Column, Date, DateTime, Numeric, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base_class import Base
@@ -17,7 +16,7 @@ class HistoricalFXRate(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     from_currency = Column(String(3), nullable=False)  # ISO 4217 currency code
     to_currency = Column(String(3), nullable=False)  # ISO 4217 currency code
-    date = Column(DateTime, nullable=False)
+    date = Column(Date, nullable=False)
     rate = Column(Numeric(20, 6), nullable=False)  # 1 from_currency = X to_currency
 
     # Ensure one rate per currency pair per day
@@ -28,10 +27,12 @@ class HistoricalFXRate(Base):
     )
 
     # Audit fields
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow(),
-        onupdate=datetime.utcnow(),
+        server_default=text("now()"),
+        onupdate=text("now()"),
     )

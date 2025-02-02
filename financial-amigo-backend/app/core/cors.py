@@ -9,6 +9,6 @@ def setup_cors(app):
         CORSMiddleware,
         allow_origins=[settings.FRONTEND_URL],
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
     )

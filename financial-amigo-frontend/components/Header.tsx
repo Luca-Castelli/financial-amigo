@@ -11,6 +11,7 @@ const navigation = [
   { name: "Accounts", href: "/accounts" },
   { name: "Holdings", href: "/holdings" },
   { name: "Transactions", href: "/transactions" },
+  { name: "Settings", href: "/settings" },
 ];
 
 export default function Header() {

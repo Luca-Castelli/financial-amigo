@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Header } from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -38,26 +37,20 @@ import {
 } from "@/components/ui/select";
 import { useRouter } from "next/navigation";
 import { users, accounts } from "@/lib/api";
-import type { Account } from "@/lib/api";
+import type { Account, User } from "@/lib/api";
 import toast from "react-hot-toast";
 import { useAuth } from "@/lib/auth-context";
 
 type AccountType = "TFSA" | "RRSP" | "FHSA" | "NON_REGISTERED";
-interface CreateAccountData {
-  name: string;
-  type: AccountType;
-  currency: "CAD" | "USD";
-  description?: string;
-  broker?: string;
-  account_number?: string;
-}
+type CreateAccountData = Omit<Account, "id">;
+type Currency = "CAD" | "USD";
 
 export default function Settings() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const [accountsList, setAccountsList] = useState<Account[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [defaultCurrency, setDefaultCurrency] = useState<"CAD" | "USD">("CAD");
+  const [defaultCurrency, setDefaultCurrency] = useState<Currency>("CAD");
 
   // Account management state
   const [isAddingAccount, setIsAddingAccount] = useState(false);
@@ -74,6 +67,8 @@ export default function Settings() {
     description: "",
     broker: "",
     account_number: "",
+    cash_balance: 0,
+    cash_interest_ytd: 0,
   };
 
   const [newAccount, setNewAccount] =
@@ -95,9 +90,10 @@ export default function Settings() {
           users.me(),
           accounts.list(),
         ]);
-        setDefaultCurrency(
-          (userResponse.data.default_currency as "CAD" | "USD") || "CAD"
-        );
+        const userData = userResponse.data;
+        if (userData?.default_currency) {
+          setDefaultCurrency(userData.default_currency as Currency);
+        }
         setAccountsList(accountsResponse.data);
       } catch (error) {
         console.error("Failed to fetch data:", error);
@@ -108,7 +104,7 @@ export default function Settings() {
     fetchData();
   }, []);
 
-  const handleCurrencyChange = async (value: "CAD" | "USD") => {
+  const handleCurrencyChange = async (value: Currency) => {
     setIsLoading(true);
     try {
       await users.updateSettings({ default_currency: value });
@@ -205,16 +201,24 @@ export default function Settings() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
       <main className="py-10">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <h1 className="text-3xl font-bold leading-tight">Settings</h1>
           <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
             {/* User Profile Card */}
             <Card>
-              <CardHeader>
-                <CardTitle>User Profile</CardTitle>
-                <CardDescription>Manage your account details</CardDescription>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>User Profile</CardTitle>
+                  <CardDescription>Manage your account details</CardDescription>
+                </div>
+                {user?.image && (
+                  <img
+                    src={user.image}
+                    alt={user.name || "Profile"}
+                    className="h-16 w-16 rounded-full"
+                  />
+                )}
               </CardHeader>
               <CardContent>
                 <form>
@@ -222,8 +226,6 @@ export default function Settings() {
                     <div className="flex flex-col space-y-1.5">
                       <Label htmlFor="name">Name</Label>
                       <Input id="name" value={user?.name || ""} disabled />
-                    </div>
-                    <div className="flex flex-col space-y-1.5">
                       <Label htmlFor="email">Email</Label>
                       <Input id="email" value={user?.email || ""} disabled />
                     </div>
@@ -339,7 +341,7 @@ export default function Settings() {
                           </Label>
                           <Select
                             value={newAccount.currency}
-                            onValueChange={(value) =>
+                            onValueChange={(value: Currency) =>
                               setNewAccount({ ...newAccount, currency: value })
                             }
                           >
@@ -429,7 +431,8 @@ export default function Settings() {
                           setSelectedAccount(account);
                           setEditAccount({
                             ...account,
-                            type: account.type,
+                            type: account.type as AccountType,
+                            currency: account.currency as Currency,
                           });
                           setIsViewingAccount(true);
                         }}
@@ -573,7 +576,7 @@ export default function Settings() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <p>
-              Please type <strong>{newAccount.name}</strong> to confirm
+              Please type <strong>{selectedAccount?.name}</strong> to confirm
               deletion:
             </p>
             <Input
@@ -592,7 +595,9 @@ export default function Settings() {
             <Button
               variant="destructive"
               onClick={handleDeleteAccount}
-              disabled={deleteConfirmation !== newAccount.name}
+              disabled={
+                !selectedAccount || deleteConfirmation !== selectedAccount.name
+              }
             >
               Delete Account
             </Button>

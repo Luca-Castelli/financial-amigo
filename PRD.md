@@ -90,14 +90,56 @@ FinancialAmigo is a modern investment portfolio tracking application designed to
 
 ### Authentication
 
-- Google OAuth integration handled by backend
-- Session management via HTTP-only cookies
-  - Backend handles Google OAuth flow and generates access/refresh cookies
-  - Frontend redirects to backend's Google OAuth route
-  - Secure HTTP-only cookies for access and refresh tokens
-  - Automatic token refresh handling via refresh cookie
-- Protected API endpoints validate cookies for each request
-- User data stored and managed in backend database only
+- Google OAuth integration with secure token management:
+  - Backend handles Google OAuth flow and token verification
+  - Frontend redirects to backend's `/api/auth/google` endpoint to initiate OAuth
+  - Backend validates Google tokens with 2-second clock skew tolerance
+  - Backend generates JWT access and refresh tokens
+  - Frontend stores tokens in session storage with basic encryption
+  - Automatic token refresh handling via interceptors
+  - Protected routes redirect to login if not authenticated
+
+#### Authentication Flow
+
+1. User clicks "Continue with Google"
+2. Frontend redirects to backend's `/api/auth/google` endpoint
+3. Backend initiates Google OAuth flow
+4. User authenticates with Google
+5. Google redirects back to backend with auth code
+6. Backend:
+   - Verifies Google token
+   - Creates/updates user in database
+   - Generates JWT access and refresh tokens
+   - Redirects to frontend with tokens in URL fragment
+7. Frontend:
+   - Extracts tokens from URL fragment
+   - Stores tokens in encrypted session storage
+   - Redirects to dashboard
+
+#### Token Management
+
+- Access tokens expire after 15 minutes
+- Refresh tokens expire after 7 days
+- Tokens stored in encrypted session storage
+- Automatic token refresh via axios interceptors
+- Token verification on each protected API request
+
+#### Error Handling
+
+- Clock synchronization error detection and user feedback
+- Invalid/expired token handling
+- Network error handling
+- Clear error messages for users
+- Automatic logout on auth failures
+
+#### Security Measures
+
+- CORS configuration with specific origin
+- HTTP-only cookies in production
+- HTTPS enforcement in production
+- Secure headers (HSTS, XSS Protection, etc.)
+- Rate limiting on auth endpoints
+- Input validation and sanitization
 
 ### Data Management
 

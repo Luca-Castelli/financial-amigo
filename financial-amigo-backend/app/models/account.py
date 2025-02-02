@@ -1,94 +1,71 @@
-import enum
-import uuid
-from datetime import datetime
+from enum import Enum as PyEnum
+from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Numeric, String
+from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, String, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
-from app.db.base_class import Base
+from app.core.database import Base
 
 
-class AccountType(str, enum.Enum):
+class AccountType(str, PyEnum):
     TFSA = "TFSA"
     RRSP = "RRSP"
     FHSA = "FHSA"
     NON_REGISTERED = "NON_REGISTERED"
 
 
+class Currency(str, PyEnum):
+    CAD = "CAD"
+    USD = "USD"
+
+
 class Account(Base):
-    """
-    Model for investment accounts (e.g., TD TFSA Investment Account)
-    """
+    """Investment account model (e.g., TD TFSA Account)."""
 
     __tablename__ = "accounts"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(
-        String, nullable=False
-    )  # User-defined name (e.g., "TD TFSA Investment Account")
-    description = Column(String, nullable=True)
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
 
-    # Foreign keys
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-
-    # Account details
-    type = Column(Enum(AccountType), nullable=False)  # Investment account type
+    # Basic details
+    name = Column(String, nullable=False)  # e.g., "TD TFSA Account"
+    type = Column(
+        Enum(
+            AccountType, name="account_type", create_constraint=True, native_enum=True
+        ),
+        nullable=False,
+    )
     currency = Column(
-        String(3), nullable=False, default="CAD"
-    )  # ISO 4217 currency code
-    broker = Column(String, nullable=True)  # For investment accounts
-    account_number = Column(String, nullable=True)  # Optional account identifier
+        Enum(Currency, name="currency", create_constraint=True, native_enum=True),
+        nullable=False,
+        server_default=Currency.CAD.value,
+    )
+    description = Column(String)
 
-    # Cash balance
-    cash_balance = Column(
-        Numeric(20, 6), nullable=False, default=0
-    )  # Current cash balance
-    cash_interest_ytd = Column(
-        Numeric(20, 6), nullable=False, default=0
-    )  # YTD interest earned
-    cash_last_updated = Column(
-        DateTime, nullable=False, default=datetime.utcnow()
-    )  # Last balance update
+    # Optional details
+    broker = Column(String)  # e.g., "TD", "Questrade"
+    account_number = Column(String)  # Account identifier at broker
 
-    # Relationships with cascade delete
+    # Cash tracking
+    cash_balance = Column(Float, nullable=False, server_default="0")
+
+    # Relationships
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     user = relationship("User", back_populates="accounts")
-    holdings = relationship(
-        "Holding",
-        back_populates="account",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
     transactions = relationship(
-        "Transaction",
-        back_populates="account",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-    cash_transactions = relationship(
-        "CashTransaction",
-        back_populates="account",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-    historical_balances = relationship(
-        "HistoricalBalance",
-        back_populates="account",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-    portfolio_benchmarks = relationship(
-        "PortfolioBenchmark",
-        back_populates="account",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
+        "Transaction", back_populates="account", cascade="all, delete-orphan"
     )
 
     # Audit fields
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow(),
-        onupdate=datetime.utcnow(),
+        server_default=text("now()"),
+        onupdate=text("now()"),
     )

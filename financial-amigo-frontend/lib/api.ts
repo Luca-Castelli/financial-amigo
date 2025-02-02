@@ -8,22 +8,24 @@ const api = axios.create({
 });
 
 // Then configure interceptors
-configureAxios(api); // Pass api instance to configure
+configureAxios(api);
 
 // API Types
+export type Currency = "CAD" | "USD";
+
 export interface User {
   id: string;
   email: string;
   name: string;
   image?: string;
-  default_currency: string;
+  default_currency: Currency;
 }
 
 export interface Account {
   id: string;
   name: string;
   type: "TFSA" | "RRSP" | "FHSA" | "NON_REGISTERED";
-  currency: "CAD" | "USD";
+  currency: Currency;
   description?: string;
   broker?: string;
   account_number?: string;
@@ -31,10 +33,26 @@ export interface Account {
   cash_interest_ytd: number;
 }
 
+export type TransactionType = "Buy" | "Sell" | "Dividend";
+
+export interface Transaction {
+  id: string;
+  date: string;
+  symbol: string;
+  quantity: number;
+  price_native: number;
+  commission_native: number;
+  currency: Currency;
+  type: TransactionType;
+  description?: string;
+  total_native: number;
+  account_id: string;
+}
+
 // API endpoints
 export const users = {
-  me: () => api.get<{ user: User }>("/api/auth/me"),
-  updateSettings: (data: { default_currency: string }) =>
+  me: () => api.get<User>("/api/users/me"),
+  updateSettings: (data: { default_currency: Currency }) =>
     api.patch<User>("/api/users/settings", data),
 };
 
@@ -46,6 +64,22 @@ export const accounts = {
   update: (id: string, data: Partial<Account>) =>
     api.patch<Account>(`/api/accounts/${id}`, data),
   delete: (id: string) => api.delete(`/api/accounts/${id}`),
+};
+
+export const transactions = {
+  list: (accountId?: string) =>
+    api.get<Transaction[]>(
+      accountId
+        ? `/api/transactions?account_id=${accountId}`
+        : "/api/transactions"
+    ),
+  create: (data: Omit<Transaction, "id" | "total_native">) =>
+    api.post<Transaction>("/api/transactions", data),
+  update: (
+    id: string,
+    data: Partial<Omit<Transaction, "id" | "total_native">>
+  ) => api.patch<Transaction>(`/api/transactions/${id}`, data),
+  delete: (id: string) => api.delete(`/api/transactions/${id}`),
 };
 
 export default api;
